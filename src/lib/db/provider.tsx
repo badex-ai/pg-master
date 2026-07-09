@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { PGlite } from '@electric-sql/pglite';
 import { live, type LiveNamespace } from '@electric-sql/pglite/live';
+import { citext } from '@electric-sql/pglite/contrib/citext';
+import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { PGliteProvider } from '@electric-sql/pglite-react';
 
 type PGliteWithLive = PGlite & { live: LiveNamespace };
@@ -19,7 +21,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     let instance: PGliteWithLive | null = null;
     let cancelled = false;
 
-    PGlite.create({ extensions: { live } }).then((created) => {
+    PGlite.create({ extensions: { live, citext, btree_gist } }).then((created) => {
       if (cancelled) {
         void created.close();
         return;

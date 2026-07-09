@@ -32,10 +32,11 @@
 
 ## Phase 1 — The data layer (from DATASET.md)
 
-- [ ] **1.1** Write the schema DDL for the e-commerce dataset (all 8 tables + bookings) as a
+- [x] **1.1** Write the schema DDL for the e-commerce dataset (all 8 tables + bookings) as a
       seed SQL module, exactly matching [[DATASET.md]] (types, constraints, keys).
-      _Verify:_ running it in PGlite creates all tables with no errors; `\d`-equivalent
-      introspection query lists them.
+      _Verify:_ ran in PGlite — all 10 tables created, EXCLUDE constraint present,
+      users.email is citext. citext + btree_gist loaded as PGlite extension modules in the
+      provider (not `CREATE EXTENSION` alone). Build passes.
       _Commit:_ `feat: add e-commerce schema ddl matching the dataset spec`
 - [ ] **1.2** Write the seed INSERTs for the curated 10 rows per table (the exact edge-case
       rows from [[DATASET.md]]).
