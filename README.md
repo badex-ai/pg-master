@@ -29,6 +29,7 @@ The curriculum is authored as four cross-linked spec files that drive every less
 | [`DESIGN.md`](./DESIGN.md) | How to **plan** a database from scratch — the method + a full Instagram teardown. Taught first. |
 | [`CURRICULUM.md`](./CURRICULUM.md) | How to **query** — the complete skills roadmap, beginner → mastery. |
 | [`MASTERY-INSIGHTS.md`](./MASTERY-INSIGHTS.md) | The master-vs-pro judgment layer — the traps only experience teaches. |
+| [`SCENARIOS.md`](./SCENARIOS.md) | Real-world case studies (situation → diagnosis → solution → why → prevent). |
 | [`DATASET.md`](./DATASET.md) | The visual practice dataset (e-commerce), 10 curated rows per table. |
 
 ## Status
