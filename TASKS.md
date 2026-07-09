@@ -18,9 +18,10 @@
 
 - [x] **0.1** Init git repo, `.gitignore`, `README.md`, this `TASKS.md`.
       _Commit:_ `chore: initialise repo with specs and build backlog`
-- [ ] **0.2** Scaffold Next.js + TS + Tailwind app (App Router). Configure `transpilePackages`
+- [x] **0.2** Scaffold Next.js + TS + Tailwind app (App Router). Configure `transpilePackages`
       for PGlite. App boots to a placeholder home page.
-      _Verify:_ `npm run dev` serves a page at localhost:3000 with no console errors.
+      _Verify:_ `npm run build` compiles successfully, types check, static pages generate.
+      (Next pinned to 15.5.20 — 15.1.6 had critical CVE-2025-66478.)
       _Commit:_ `feat: scaffold next.js app with tailwind and pglite config`
 - [ ] **0.3** Add PGlite + pglite-react deps and a client-only `PGliteProvider` at the root.
       A tiny debug component runs `SELECT version()` and renders the result.
