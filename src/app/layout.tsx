@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { DatabaseProvider } from '@/lib/db/provider';
 
 export const metadata: Metadata = {
   title: 'PG Master — Learn PostgreSQL to Mastery',
@@ -12,7 +13,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <DatabaseProvider>{children}</DatabaseProvider>
+      </body>
     </html>
   );
 }

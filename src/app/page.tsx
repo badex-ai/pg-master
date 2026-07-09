@@ -1,3 +1,5 @@
+import { VersionSmokeTest } from '@/components/VersionSmokeTest';
+
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-6 px-6 py-16">
@@ -6,9 +8,7 @@ export default function Home() {
         Learn PostgreSQL — from designing a database to querying it at an expert
         level — practicing against real Postgres running in your browser.
       </p>
-      <p className="font-mono text-sm text-neutral-400">
-        Scaffold online. Next: wire up PGlite.
-      </p>
+      <VersionSmokeTest />
     </main>
   );
 }

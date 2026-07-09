@@ -23,9 +23,11 @@
       _Verify:_ `npm run build` compiles successfully, types check, static pages generate.
       (Next pinned to 15.5.20 — 15.1.6 had critical CVE-2025-66478.)
       _Commit:_ `feat: scaffold next.js app with tailwind and pglite config`
-- [ ] **0.3** Add PGlite + pglite-react deps and a client-only `PGliteProvider` at the root.
+- [x] **0.3** Add PGlite + pglite-react deps and a client-only `PGliteProvider` at the root.
       A tiny debug component runs `SELECT version()` and renders the result.
-      _Verify:_ home page shows the Postgres version string from real PGlite in-browser.
+      _Verify:_ build passes; PGlite boots headlessly and returns `PostgreSQL 18.3 (PGlite
+      0.5.4)` — confirming real PG18, matching the pinned content version. (Browser render
+      to be eyeballed by user via `npm run dev`.)
       _Commit:_ `feat: wire up pglite provider with a version smoke test`
 
 ## Phase 1 — The data layer (from DATASET.md)

@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@electric-sql/pglite-react": "^0.4.4",
     "next": "15.5.20",
     "react": "19.0.0",
     "react-dom": "19.0.0"
