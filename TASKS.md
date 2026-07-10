@@ -38,9 +38,13 @@
       users.email is citext. citext + btree_gist loaded as PGlite extension modules in the
       provider (not `CREATE EXTENSION` alone). Build passes.
       _Commit:_ `feat: add e-commerce schema ddl matching the dataset spec`
-- [ ] **1.2** Write the seed INSERTs for the curated 10 rows per table (the exact edge-case
+- [x] **1.2** Write the seed INSERTs for the curated 10 rows per table (the exact edge-case
       rows from [[DATASET.md]]).
-      _Verify:_ row counts match; the NULL user_id order and fan-out rows are present.
+      _Verify:_ ran schema+seed in PGlite — all 10 tables have exactly 10 rows; NULL user_id
+      order 105, order-101 fan-out (2 items × 3 shipments), refund, NULL-body review,
+      zero-stock, NULL category all present; citext + EXCLUDE still enforced against seeded
+      data. Inserts use OVERRIDING SYSTEM VALUE (identity ids are meaningful FK targets); a
+      SEQUENCE_FIXUP advances each identity sequence past the seeded max (next user id = 11).
       _Commit:_ `feat: seed curated 10-row sample data`
 - [ ] **1.3** On PGlite init, run schema + seed once (idempotent). Add a "reset database"
       action that re-seeds.
