@@ -13,11 +13,19 @@ export type QueryResult = {
 // int2, int4, int8, oid, float4, float8, numeric, money.
 const NUMERIC_OIDS = new Set([21, 23, 20, 26, 700, 701, 1700, 790]);
 
+// Cap how many rows are put in the DOM. A curious learner can `SELECT generate_series
+// (1, 1000000)` and the performance lessons inflate tables to millions of rows; render
+// all of them and the tab freezes. The full row count is still reported by the caller.
+const MAX_RENDERED_ROWS = 500;
+
 /** Render a single cell value the way a psql/pgAdmin grid would. Always a text node. */
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'boolean') return value ? 't' : 'f';
   if (value instanceof Date) return value.toISOString();
+  if (value instanceof Uint8Array) {
+    return '\\x' + Array.from(value, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
@@ -47,6 +55,9 @@ export function ResultGrid({ result }: ResultGridProps) {
     );
   }
 
+  const truncated = result.rows.length > MAX_RENDERED_ROWS;
+  const visibleRows = truncated ? result.rows.slice(0, MAX_RENDERED_ROWS) : result.rows;
+
   return (
     <div className="overflow-x-auto rounded border border-neutral-300">
       <table className="w-full border-collapse font-mono text-sm">
@@ -75,7 +86,7 @@ export function ResultGrid({ result }: ResultGridProps) {
               </td>
             </tr>
           ) : (
-            result.rows.map((row, i) => (
+            visibleRows.map((row, i) => (
               <tr key={i} className={i % 2 === 1 ? 'bg-neutral-50' : undefined}>
                 {result.fields.map((f) => {
                   const value = row[f.name];
@@ -102,6 +113,11 @@ export function ResultGrid({ result }: ResultGridProps) {
           )}
         </tbody>
       </table>
+      {truncated && (
+        <p className="border-t border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs text-neutral-500">
+          Showing first {MAX_RENDERED_ROWS.toLocaleString()} of {result.rows.length.toLocaleString()} rows
+        </p>
+      )}
     </div>
   );
 }

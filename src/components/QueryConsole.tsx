@@ -1,42 +1,37 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePGlite } from '@electric-sql/pglite-react';
 import { useResetDatabase, useResetEpoch } from '@/lib/db/provider';
 import { SqlEditor, DEFAULT_SCHEMA, type EditorSchema } from './SqlEditor';
-import { ResultGrid, type QueryResult } from './ResultGrid';
+import { ResultGrid } from './ResultGrid';
 import { QueryError } from './QueryError';
-import { toPgError, type PgError } from '@/lib/pgError';
+import { useQueryRunner, type RunFailure, type RunOutcome } from '@/lib/useQueryRunner';
 
-/** A failed run: the parsed Postgres error plus the query that produced it (for the caret). */
-type RunError = { error: PgError; query: string };
+const DEFAULT_INITIAL_SQL = 'SELECT * FROM users;';
 
-/** A successful run's outcome shown to the learner: the result and how long it took. */
-type RunOutcome = { result: QueryResult; elapsedMs: number };
-
-const INITIAL_SQL = 'SELECT * FROM users;';
+type QueryConsoleProps = {
+  /** SQL to preload into the editor (e.g. a lesson's worked example). */
+  initialSql?: string;
+  /** Notified after each run settles, so a lesson can react to (or grade) the result. */
+  onRunComplete?: (result: RunOutcome | RunFailure) => void;
+};
 
 /**
  * The core practice surface: a SQL editor wired to the in-browser Postgres, with the
- * result rendered in a DB-client-style grid. Owns the SQL text and the last result/error.
- * Refetches after a database reset, and keeps autocomplete honest by refreshing the
- * editor schema from information_schema after each successful run.
+ * result rendered in a DB-client-style grid. Owns the SQL text; the run state machine
+ * lives in useQueryRunner so a lesson could reuse it. Keeps autocomplete honest by
+ * refreshing the editor schema from information_schema after each run.
  */
-export function QueryConsole() {
+export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete }: QueryConsoleProps) {
   const db = usePGlite();
   const reset = useResetDatabase();
   const resetEpoch = useResetEpoch();
+  const runner = useQueryRunner(db);
 
-  const [sql, setSql] = useState(INITIAL_SQL);
-  const [outcome, setOutcome] = useState<RunOutcome | null>(null);
-  const [failure, setFailure] = useState<RunError | null>(null);
-  const [running, setRunning] = useState(false);
+  const [sql, setSql] = useState(initialSql);
   const [schema, setSchema] = useState<EditorSchema>(DEFAULT_SCHEMA);
-
-  // Latest SQL, so the reset-triggered refetch runs what's currently in the editor
-  // without making `sql` a dependency of the run callback.
-  const sqlRef = useRef(sql);
-  sqlRef.current = sql;
+  const [notice, setNotice] = useState<string | null>(null);
 
   const refreshSchema = useCallback(async () => {
     const res = await db.query<{ table_name: string; column_name: string }>(
@@ -47,55 +42,46 @@ export function QueryConsole() {
     for (const { table_name, column_name } of res.rows) {
       (next[table_name] ??= []).push(column_name);
     }
-    if (Object.keys(next).length > 0) setSchema(next);
+    // Only replace when the schema actually changed, so autocomplete (and thus the
+    // CodeMirror extensions) don't reconfigure on every successful run.
+    setSchema((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   }, [db]);
 
   const run = useCallback(
     async (query: string) => {
-      const trimmed = query.trim();
-      if (!trimmed) return;
-      setRunning(true);
-      setFailure(null);
-      const start = performance.now();
-      try {
-        const res = await db.query(trimmed);
-        const elapsedMs = performance.now() - start;
-        setOutcome({
-          result: {
-            rows: res.rows as Record<string, unknown>[],
-            fields: res.fields,
-            affectedRows: res.affectedRows,
-          },
-          elapsedMs,
-        });
-        // A statement may have changed the schema; keep autocomplete current.
-        await refreshSchema();
-      } catch (e) {
-        setFailure({ error: toPgError(e), query: trimmed });
-        setOutcome(null);
-      } finally {
-        setRunning(false);
-      }
+      setNotice(null);
+      await runner.run(query);
+      // A statement may have changed the schema; keep autocomplete current. Runs after
+      // the user query settles, and never masks a query outcome (its own failure is
+      // swallowed — a broken information_schema read is not the learner's error).
+      refreshSchema().catch(() => {});
     },
-    [db, refreshSchema],
+    [runner, refreshSchema],
   );
 
-  // After a reset, the data (and possibly schema) changed underneath us: re-run the
-  // current query so the grid reflects the freshly re-seeded database. Skipped on the
-  // initial mount (resetEpoch 0) so nothing runs until the learner does.
+  // Report each settled run to a parent lesson, if any.
+  const lastSettled = runner.failure ?? runner.outcome;
   useEffect(() => {
-    if (resetEpoch > 0) void run(sqlRef.current);
+    if (lastSettled && onRunComplete) onRunComplete(lastSettled);
+  }, [lastSettled, onRunComplete]);
+
+  // A reset replaces the whole database. Do NOT re-run the editor's SQL — it may be
+  // destructive (DELETE/DROP), which would wipe the freshly restored data. Clear the
+  // last result and tell the learner the sample data is back.
+  useEffect(() => {
+    if (resetEpoch > 0) {
+      runner.clear();
+      setNotice('Database reset — sample data restored.');
+      refreshSchema().catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetEpoch]);
 
   const handleReset = useCallback(async () => {
-    setRunning(true);
-    try {
-      await reset();
-    } finally {
-      setRunning(false);
-    }
+    await reset();
   }, [reset]);
+
+  const { outcome, failure, running } = runner;
 
   return (
     <div className="flex flex-col gap-3">
@@ -138,6 +124,8 @@ export function QueryConsole() {
           </p>
           {outcome.result.fields.length > 0 && <ResultGrid result={outcome.result} />}
         </div>
+      ) : notice ? (
+        <p className="font-mono text-sm text-emerald-600">{notice}</p>
       ) : (
         <p className="font-mono text-sm text-neutral-400">Run a query to see results.</p>
       )}

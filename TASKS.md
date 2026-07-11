@@ -107,6 +107,17 @@
       guarded only by the browser test (Node v20 can't strip TS types for a unit test) —
       candidate for a unit test if Vitest is added later.
       _Commit:_ `feat: surface postgres errors and query timing`
+      _Deep review (Fable, Phase-2 delta 2.1–2.3):_ found + fixed — CRITICAL: reset was
+      re-running the editor's SQL via resetEpoch, so DELETE-then-Reset re-deleted the
+      restored data; now Reset clears results + shows a "sample data restored" notice and
+      never re-runs. HIGH: overlapping runs could show a stale error over a success (fixed
+      with a generation guard); `db.query` rejected multi-statement SQL (switched to
+      `db.exec`, result shape is now per-statement, last shown); uncapped grid froze on
+      huge results (capped at 500 DOM rows, true count still reported). MEDIUM: schema
+      refresh now diffs before setState (no per-run editor reconfigure). LOW: bytea renders
+      as `\x…` hex. Extracted the run state machine into `useQueryRunner` + added
+      `initialSql`/`onRunComplete` props so Phase 3 can reuse the console without forking.
+      All verified in-browser. Baseline tag moved to HEAD after these fixes.
 - [ ] **2.4** Always-visible sample-data panel: show the relevant table's 10 rows beside the
       editor (per [[DATASET.md]] "how the app should render this").
       _Verify:_ the panel shows a table's rows and updates when the active table changes.
