@@ -64,6 +64,12 @@
 - [ ] **2.2** Execute editor SQL against PGlite; render results in a DB-client-style grid
       (monospace, zebra rows, right-aligned numbers, explicit NULL chips per [[DATASET.md]]).
       _Verify:_ `SELECT * FROM users` shows the 10 rows with NULLs rendered as chips.
+      _Note (from deep review):_ (1) delete the temporary `VersionSmokeTest` component here —
+      the real editor/grid replaces it; keep `useResetDatabase` and the provider. (2) A
+      learner-facing reset mutates the world under every result view; add a `resetEpoch`
+      counter to the DB context (incremented on reset) and key result fetches on it so the
+      grid/sample panel refetch after a reset. Designing this now is one integer; retrofitting
+      after several components hold state is a refactor.
       _Commit:_ `feat: run queries and render results in a db-style grid`
 - [ ] **2.3** Handle errors like real Postgres: show the SQLSTATE + message on a bad query,
       not a crash. Show rows-affected / timing for DML.
@@ -82,6 +88,9 @@
 - [ ] **3.1** Define the lesson content schema (TS types): a lesson has teach content, a
       dataset context, questions (typed per the taxonomy in [[CURRICULUM.md]]), and reveals.
       _Verify:_ types compile; one sample lesson object validates.
+      _Note (from deep review):_ resolve the grading-isolation decision (see decisions log)
+      BEFORE finalizing these types — the schema must be able to express whether a lesson
+      assumes pristine DB state, which depends on that decision.
       _Commit:_ `feat: define lesson and question content model`
 - [ ] **3.2** Lesson view: render teach content (markdown) + worked example + the live editor
       pre-loaded with the example.
@@ -94,6 +103,9 @@
 - [ ] **3.4** Write-the-query grading: run the learner's SQL and the reference SQL against
       PGlite, compare result sets, report match/mismatch with the diff.
       _Verify:_ a correct answer passes; a wrong one shows how the result differs.
+      _Note (from deep review):_ grade against pristine state, not the learner's mutated DB
+      (see grading-isolation decision in the log) — otherwise prior edits make a correct
+      answer grade as wrong.
       _Commit:_ `feat: grade write-the-query answers by result-set comparison`
 
 ## Phase 4 — Navigation, progress, content authoring
@@ -132,3 +144,21 @@
 - **Content pinned to PostgreSQL 18** throughout.
 - **Ralph loop:** eligible from Phase 2 onward, once patterns are established. Not before —
   early steps (stack choices, provider wiring) want a human watching.
+- **Persistence: memory-only, by deliberate choice.** `PGlite.create()` runs with no
+  `dataDir`, so every reload starts fresh and re-seeds. This keeps the curated state always
+  pristine and makes reset trivial. Progress is tracked in localStorage (task 4.2), not in
+  the DB. **Do NOT add `idb://` persistence casually:** `seedDatabase`'s atomicity and the
+  `isSeeded` schema-presence guard both assume a partially-seeded DB can never survive a
+  reload — persisting the DB would make a mid-seed failure permanently brick a learner's
+  session. If persistence is ever wanted, revisit `seed.ts` first.
+- **Grading needs a pristine-state primitive (decide before 3.1/3.4).** The learner mutates
+  one shared PGlite instance freely (DELETE/UPDATE/DDL by design). Task 3.4 grades by running
+  learner SQL and reference SQL against the DB and comparing result sets — but a learner who
+  altered data earlier makes a *correct* answer grade as wrong. Before authoring the lesson
+  content model (3.1), decide the grading isolation model: reset-before-grade (simple, wipes
+  learner scratch work), a second ephemeral PGlite instance for grading, or a snapshot/restore.
+  The lesson schema must record whether a lesson assumes pristine state.
+- **Deep review (Fable) at Phase 1 milestone:** done at HEAD `97c9815`+fixes. HIGH-1 (atomic
+  seed + boot error path), HIGH-2 (`DROP SCHEMA` reset removes learner DDL), HIGH-3 (permanent
+  DATASET.md fidelity test, `npm test`) all addressed. Baseline tag `deep-review/last` set.
+  Next deep review: end of Phase 2.
