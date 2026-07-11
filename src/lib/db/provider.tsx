@@ -32,6 +32,7 @@ export function useResetDatabase(): () => Promise<void> {
  */
 export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<PGliteWithLive | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
     let instance: PGliteWithLive | null = null;
@@ -50,6 +51,9 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         setDb(instance);
+      })
+      .catch((e) => {
+        if (!cancelled) setInitError(String(e));
       });
 
     return () => {
@@ -61,6 +65,16 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const reset = useCallback(async () => {
     if (db) await resetDatabase(db);
   }, [db]);
+
+  if (initError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 px-6 text-center font-mono text-sm text-red-500">
+        <p>Postgres failed to start in your browser.</p>
+        <p className="text-neutral-500">{initError}</p>
+        <p className="text-neutral-500">Reload the page to try again.</p>
+      </div>
+    );
+  }
 
   if (!db) {
     return (
