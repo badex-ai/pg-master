@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { PGlite } from '@electric-sql/pglite';
 import { live, type LiveNamespace } from '@electric-sql/pglite/live';
 import { citext } from '@electric-sql/pglite/contrib/citext';
@@ -10,18 +10,37 @@ import { resetDatabase, seedDatabase } from './seed';
 
 type PGliteWithLive = PGlite & { live: LiveNamespace };
 
-const ResetContext = createContext<(() => Promise<void>) | null>(null);
+type ResetContextValue = {
+  /** Re-seed the database to the curated sample, discarding learner edits. */
+  reset: () => Promise<void>;
+  /** Bumped after each reset, so views can invalidate cached results and refetch. */
+  resetEpoch: number;
+};
+
+const ResetContext = createContext<ResetContextValue | null>(null);
+
+function useResetContext(): ResetContextValue {
+  const ctx = useContext(ResetContext);
+  if (!ctx) {
+    throw new Error('useResetDatabase/useResetEpoch must be used within a DatabaseProvider');
+  }
+  return ctx;
+}
 
 /**
  * Re-seed the database to the curated sample, discarding learner edits. Throws if
  * used outside DatabaseProvider (the db must exist to reset it).
  */
 export function useResetDatabase(): () => Promise<void> {
-  const reset = useContext(ResetContext);
-  if (!reset) {
-    throw new Error('useResetDatabase must be used within a DatabaseProvider');
-  }
-  return reset;
+  return useResetContext().reset;
+}
+
+/**
+ * A counter bumped after each database reset. Views holding query results should key
+ * their fetches on this so they refetch the freshly re-seeded data after a reset.
+ */
+export function useResetEpoch(): number {
+  return useResetContext().resetEpoch;
 }
 
 /**
@@ -33,6 +52,7 @@ export function useResetDatabase(): () => Promise<void> {
 export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<PGliteWithLive | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+  const [resetEpoch, setResetEpoch] = useState(0);
 
   useEffect(() => {
     let instance: PGliteWithLive | null = null;
@@ -63,8 +83,12 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const reset = useCallback(async () => {
-    if (db) await resetDatabase(db);
+    if (!db) return;
+    await resetDatabase(db);
+    setResetEpoch((n) => n + 1);
   }, [db]);
+
+  const resetValue = useMemo(() => ({ reset, resetEpoch }), [reset, resetEpoch]);
 
   if (initError) {
     return (
@@ -85,7 +109,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ResetContext.Provider value={reset}>
+    <ResetContext.Provider value={resetValue}>
       <PGliteProvider db={db}>{children}</PGliteProvider>
     </ResetContext.Provider>
   );

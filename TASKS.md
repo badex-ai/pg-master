@@ -72,9 +72,16 @@
       across keystrokes (`reviews` completes first), run handler still fires, aria-label on the
       textbox. Tag NOT moved — end-of-Phase-2 milestone still covers this.
       _Commit:_ `feat: add codemirror sql editor` (+ `fix: build editor extensions once ...`)
-- [ ] **2.2** Execute editor SQL against PGlite; render results in a DB-client-style grid
+- [x] **2.2** Execute editor SQL against PGlite; render results in a DB-client-style grid
       (monospace, zebra rows, right-aligned numbers, explicit NULL chips per [[DATASET.md]]).
-      _Verify:_ `SELECT * FROM users` shows the 10 rows with NULLs rendered as chips.
+      _Verify:_ in-browser (Playwright) — `SELECT * FROM users` shows 10 rows with 3 NULL chips
+      (rows 4+8), numeric `id` right-aligned, jsonb as compact JSON; a DELETE shows "2 rows
+      affected"; Reset auto-re-runs the current query (8→10 reviews) via resetEpoch; live-schema
+      autocomplete picks up a learner-created `widgets` table; Run button + Cmd/Ctrl+Enter both
+      work; console clean. Deleted the VersionSmokeTest + EditorSmokeTest harnesses. Resolved
+      deep-review notes: (2) resetEpoch invalidation, (3) live schema from information_schema,
+      (4) visible Run button, (5) cells render as text nodes only. Error display is minimal
+      here (proper SQLSTATE/timing is task 2.3).
       _Note (from deep review):_ (1) delete the temporary `VersionSmokeTest` AND
       `EditorSmokeTest` components here — the real editor/grid replaces them; keep
       `useResetDatabase`, the provider, and `SqlEditor`. (2) A learner-facing reset mutates

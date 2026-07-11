@@ -8,8 +8,14 @@ import { useMemo, useRef } from 'react';
 import CodeMirror, { keymap, Prec, EditorView } from '@uiw/react-codemirror';
 import { sql, PostgreSQL } from '@codemirror/lang-sql';
 
-/** The seeded tables/columns, for editor autocompletion — matches the DATASET.md schema. */
-const SCHEMA: Record<string, string[]> = {
+export type EditorSchema = Record<string, string[]>;
+
+/**
+ * The seeded tables/columns, used as the autocomplete fallback before the live schema
+ * is known. Matches the DATASET.md schema. Once queries run, the console passes a
+ * `schema` derived from `information_schema` so completion stays correct through DDL.
+ */
+export const DEFAULT_SCHEMA: EditorSchema = {
   users: ['id', 'email', 'full_name', 'country', 'city', 'status', 'created_at', 'preferences'],
   categories: ['id', 'name', 'parent_id', 'slug'],
   products: ['id', 'sku', 'name', 'category_id', 'price', 'attributes', 'created_at'],
@@ -27,6 +33,8 @@ type SqlEditorProps = {
   onChange: (value: string) => void;
   /** Called with the current SQL when the learner presses Cmd/Ctrl+Enter. */
   onRun: (sql: string) => void;
+  /** Tables/columns for autocompletion. Defaults to the seeded schema. */
+  schema?: EditorSchema;
 };
 
 /**
@@ -34,7 +42,7 @@ type SqlEditorProps = {
  * autocompletion. Cmd/Ctrl+Enter runs the current query via `onRun`. The parent owns
  * the SQL text (controlled `value`/`onChange`), so it can pre-load worked examples.
  */
-export function SqlEditor({ value, onChange, onRun }: SqlEditorProps) {
+export function SqlEditor({ value, onChange, onRun, schema = DEFAULT_SCHEMA }: SqlEditorProps) {
   // Latest-ref for the run handler: the keymap always calls the current onRun without
   // the handler's identity being a dependency of `extensions`. This lets `extensions`
   // be built exactly once — a changing extensions array makes the wrapper dispatch a
@@ -45,7 +53,7 @@ export function SqlEditor({ value, onChange, onRun }: SqlEditorProps) {
 
   const extensions = useMemo(
     () => [
-      sql({ dialect: PostgreSQL, schema: SCHEMA, upperCaseKeywords: true }),
+      sql({ dialect: PostgreSQL, schema, upperCaseKeywords: true }),
       // Cmd/Ctrl+Enter runs the query. Prec.highest beats the default Mod-Enter binding
       // (insertBlankLine). Reads the live document so it always runs what's on screen.
       Prec.highest(
@@ -63,7 +71,9 @@ export function SqlEditor({ value, onChange, onRun }: SqlEditorProps) {
       // never reaches the editable element; set it on the content DOM directly.
       EditorView.contentAttributes.of({ 'aria-label': 'SQL editor' }),
     ],
-    [],
+    // Rebuild only when the schema changes (rare — e.g. after DDL), never per keystroke:
+    // `onRun` is read through a ref so it is deliberately not a dependency.
+    [schema],
   );
 
   return (
