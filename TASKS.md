@@ -46,9 +46,13 @@
       data. Inserts use OVERRIDING SYSTEM VALUE (identity ids are meaningful FK targets); a
       SEQUENCE_FIXUP advances each identity sequence past the seeded max (next user id = 11).
       _Commit:_ `feat: seed curated 10-row sample data`
-- [ ] **1.3** On PGlite init, run schema + seed once (idempotent). Add a "reset database"
+- [x] **1.3** On PGlite init, run schema + seed once (idempotent). Add a "reset database"
       action that re-seeds.
-      _Verify:_ fresh load has data; reset restores it after edits.
+      _Verify:_ headless — seed is idempotent (second call no-ops), reset restores curated
+      state after edits, sequence fixup survives reset, double-reset safe. In-browser
+      (Playwright) — provider seeds on init (reviews=10), delete→0, reset→10, fresh load
+      has 0 console errors. resetDatabase drops (reverse-dep order) + rebuilds; exposed via
+      a ResetContext / useResetDatabase hook.
       _Commit:_ `feat: auto-seed pglite on init with a reset action`
 
 ## Phase 2 — The SQL editor & result grid (the core surface)
