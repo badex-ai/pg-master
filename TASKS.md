@@ -64,16 +64,29 @@
       (Runs 0→1→2) and the handler receives the live document text, not the stale preload;
       console clean. Uses @uiw/react-codemirror + @codemirror/lang-sql (PostgreSQL dialect,
       schema-aware autocomplete). Controlled value/onChange so the parent can preload examples.
-      _Commit:_ `feat: add codemirror sql editor`
+      _Deep review (Fable):_ found + fixed a HIGH defect — `extensions` memoized on `onRun`
+      identity reconfigured the editor every keystroke (tearing down autocomplete mid-typing);
+      fixed with a latest-ref for `onRun` + build-extensions-once. Also: aria-label now set via
+      `EditorView.contentAttributes` (reaches the real textbox); keymap/Prec/EditorView imported
+      from the wrapper (single-instance guarantee). Verified in-browser: autocomplete persists
+      across keystrokes (`reviews` completes first), run handler still fires, aria-label on the
+      textbox. Tag NOT moved — end-of-Phase-2 milestone still covers this.
+      _Commit:_ `feat: add codemirror sql editor` (+ `fix: build editor extensions once ...`)
 - [ ] **2.2** Execute editor SQL against PGlite; render results in a DB-client-style grid
       (monospace, zebra rows, right-aligned numbers, explicit NULL chips per [[DATASET.md]]).
       _Verify:_ `SELECT * FROM users` shows the 10 rows with NULLs rendered as chips.
-      _Note (from deep review):_ (1) delete the temporary `VersionSmokeTest` component here —
-      the real editor/grid replaces it; keep `useResetDatabase` and the provider. (2) A
-      learner-facing reset mutates the world under every result view; add a `resetEpoch`
-      counter to the DB context (incremented on reset) and key result fetches on it so the
-      grid/sample panel refetch after a reset. Designing this now is one integer; retrofitting
-      after several components hold state is a refactor.
+      _Note (from deep review):_ (1) delete the temporary `VersionSmokeTest` AND
+      `EditorSmokeTest` components here — the real editor/grid replaces them; keep
+      `useResetDatabase`, the provider, and `SqlEditor`. (2) A learner-facing reset mutates
+      the world under every result view; add a `resetEpoch` counter to the DB context
+      (incremented on reset) and key result fetches on it so the grid/sample panel refetch
+      after a reset. Designing this now is one integer; retrofitting after several components
+      hold state is a refactor. (3) Make `SqlEditor`'s `schema` a prop, defaulted to the
+      current constant, and refresh it from `information_schema.columns` after each successful
+      run — the hardcoded map goes stale the moment a learner runs DDL (this app teaches
+      schema design). (4) Ship a visible Run button (same handler) with the Cmd/Ctrl+Enter
+      shortcut as its label/tooltip — a keyboard-only trigger is undiscoverable. (5) Result
+      grid cells hold arbitrary query output; render as React text nodes only, never raw HTML.
       _Commit:_ `feat: run queries and render results in a db-style grid`
 - [ ] **2.3** Handle errors like real Postgres: show the SQLSTATE + message on a bad query,
       not a crash. Show rows-affected / timing for DML.

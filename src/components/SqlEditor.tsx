@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
+import { useMemo, useRef } from 'react';
+// Import keymap/Prec/EditorView from the wrapper (it re-exports @codemirror/view and
+// @codemirror/state), so we always use the wrapper's own instances — CodeMirror's
+// facet/extension identity is instance-based, and a second copy of @codemirror/state
+// would silently break keybindings.
+import CodeMirror, { keymap, Prec, EditorView } from '@uiw/react-codemirror';
 import { sql, PostgreSQL } from '@codemirror/lang-sql';
-import { keymap } from '@codemirror/view';
-import { Prec } from '@codemirror/state';
 
 /** The seeded tables/columns, for editor autocompletion — matches the DATASET.md schema. */
 const SCHEMA: Record<string, string[]> = {
@@ -33,27 +35,35 @@ type SqlEditorProps = {
  * the SQL text (controlled `value`/`onChange`), so it can pre-load worked examples.
  */
 export function SqlEditor({ value, onChange, onRun }: SqlEditorProps) {
-  // Run-on-Cmd/Ctrl+Enter, at high precedence so it beats CodeMirror's default
-  // Enter handling. Reads the live document so it always runs what's on screen.
-  const runKeymap = useMemo(
-    () =>
+  // Latest-ref for the run handler: the keymap always calls the current onRun without
+  // the handler's identity being a dependency of `extensions`. This lets `extensions`
+  // be built exactly once — a changing extensions array makes the wrapper dispatch a
+  // full reconfigure (rebuilding the language/autocompletion state), which would tear
+  // down the schema autocomplete on every keystroke if a consumer passes an inline onRun.
+  const onRunRef = useRef(onRun);
+  onRunRef.current = onRun;
+
+  const extensions = useMemo(
+    () => [
+      sql({ dialect: PostgreSQL, schema: SCHEMA, upperCaseKeywords: true }),
+      // Cmd/Ctrl+Enter runs the query. Prec.highest beats the default Mod-Enter binding
+      // (insertBlankLine). Reads the live document so it always runs what's on screen.
       Prec.highest(
         keymap.of([
           {
             key: 'Mod-Enter',
             run: (view) => {
-              onRun(view.state.doc.toString());
+              onRunRef.current(view.state.doc.toString());
               return true;
             },
           },
         ]),
       ),
-    [onRun],
-  );
-
-  const extensions = useMemo(
-    () => [sql({ dialect: PostgreSQL, schema: SCHEMA, upperCaseKeywords: true }), runKeymap],
-    [runKeymap],
+      // The wrapper spreads unknown props onto its outer div, so an `aria-label` prop
+      // never reaches the editable element; set it on the content DOM directly.
+      EditorView.contentAttributes.of({ 'aria-label': 'SQL editor' }),
+    ],
+    [],
   );
 
   return (
@@ -63,7 +73,6 @@ export function SqlEditor({ value, onChange, onRun }: SqlEditorProps) {
       extensions={extensions}
       basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
       className="overflow-hidden rounded border border-neutral-300 text-sm"
-      aria-label="SQL editor"
     />
   );
 }
