@@ -95,9 +95,17 @@
       shortcut as its label/tooltip — a keyboard-only trigger is undiscoverable. (5) Result
       grid cells hold arbitrary query output; render as React text nodes only, never raw HTML.
       _Commit:_ `feat: run queries and render results in a db-style grid`
-- [ ] **2.3** Handle errors like real Postgres: show the SQLSTATE + message on a bad query,
+- [x] **2.3** Handle errors like real Postgres: show the SQLSTATE + message on a bad query,
       not a crash. Show rows-affected / timing for DML.
-      _Verify:_ a syntax error and a constraint violation each render a proper PG error.
+      _Verify:_ in-browser (Playwright) — `SELECT * FORM users` renders `ERROR: syntax error
+      at or near "FORM"` with a caret under FORM (LINE 1) and SQLSTATE 42601; a duplicate
+      `ADA@example.com` insert renders `ERROR: duplicate key ...` + DETAIL + SQLSTATE 23505
+      (also demonstrates citext case-insensitivity live); a successful query shows
+      "7 rows · 6.1 ms"; DML shows "N rows affected · time"; console clean (errors render
+      in-UI, not as crashes). PGlite error narrowed structurally (class name is minified);
+      caret uses the error `position` offset. _Note:_ pure pgError.ts logic is currently
+      guarded only by the browser test (Node v20 can't strip TS types for a unit test) —
+      candidate for a unit test if Vitest is added later.
       _Commit:_ `feat: surface postgres errors and query timing`
 - [ ] **2.4** Always-visible sample-data panel: show the relevant table's 10 rows beside the
       editor (per [[DATASET.md]] "how the app should render this").

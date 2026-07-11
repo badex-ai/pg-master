@@ -5,6 +5,14 @@ import { usePGlite } from '@electric-sql/pglite-react';
 import { useResetDatabase, useResetEpoch } from '@/lib/db/provider';
 import { SqlEditor, DEFAULT_SCHEMA, type EditorSchema } from './SqlEditor';
 import { ResultGrid, type QueryResult } from './ResultGrid';
+import { QueryError } from './QueryError';
+import { toPgError, type PgError } from '@/lib/pgError';
+
+/** A failed run: the parsed Postgres error plus the query that produced it (for the caret). */
+type RunError = { error: PgError; query: string };
+
+/** A successful run's outcome shown to the learner: the result and how long it took. */
+type RunOutcome = { result: QueryResult; elapsedMs: number };
 
 const INITIAL_SQL = 'SELECT * FROM users;';
 
@@ -20,8 +28,8 @@ export function QueryConsole() {
   const resetEpoch = useResetEpoch();
 
   const [sql, setSql] = useState(INITIAL_SQL);
-  const [result, setResult] = useState<QueryResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<RunOutcome | null>(null);
+  const [failure, setFailure] = useState<RunError | null>(null);
   const [running, setRunning] = useState(false);
   const [schema, setSchema] = useState<EditorSchema>(DEFAULT_SCHEMA);
 
@@ -47,15 +55,24 @@ export function QueryConsole() {
       const trimmed = query.trim();
       if (!trimmed) return;
       setRunning(true);
-      setError(null);
+      setFailure(null);
+      const start = performance.now();
       try {
         const res = await db.query(trimmed);
-        setResult({ rows: res.rows as Record<string, unknown>[], fields: res.fields, affectedRows: res.affectedRows });
+        const elapsedMs = performance.now() - start;
+        setOutcome({
+          result: {
+            rows: res.rows as Record<string, unknown>[],
+            fields: res.fields,
+            affectedRows: res.affectedRows,
+          },
+          elapsedMs,
+        });
         // A statement may have changed the schema; keep autocomplete current.
         await refreshSchema();
       } catch (e) {
-        setError(String(e));
-        setResult(null);
+        setFailure({ error: toPgError(e), query: trimmed });
+        setOutcome(null);
       } finally {
         setRunning(false);
       }
@@ -106,12 +123,21 @@ export function QueryConsole() {
         <span className="font-mono text-xs text-neutral-400">Cmd/Ctrl+Enter to run</span>
       </div>
 
-      {error ? (
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-red-300 bg-red-50 p-3 font-mono text-sm text-red-700">
-          {error}
-        </pre>
-      ) : result ? (
-        <ResultGrid result={result} />
+      {failure ? (
+        <QueryError error={failure.error} query={failure.query} />
+      ) : outcome ? (
+        <div className="flex flex-col gap-1.5">
+          <p className="font-mono text-xs text-neutral-400">
+            {outcome.result.fields.length > 0
+              ? `${outcome.result.rows.length} row${outcome.result.rows.length === 1 ? '' : 's'}`
+              : `${outcome.result.affectedRows ?? 0} row${(outcome.result.affectedRows ?? 0) === 1 ? '' : 's'} affected`}
+            {' · '}
+            {outcome.elapsedMs < 1
+              ? '<1 ms'
+              : `${outcome.elapsedMs.toFixed(outcome.elapsedMs < 10 ? 1 : 0)} ms`}
+          </p>
+          {outcome.result.fields.length > 0 && <ResultGrid result={outcome.result} />}
+        </div>
       ) : (
         <p className="font-mono text-sm text-neutral-400">Run a query to see results.</p>
       )}
