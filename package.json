@@ -10,8 +10,10 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@codemirror/lang-sql": "^6.10.0",
     "@electric-sql/pglite": "^0.5.4",
     "@electric-sql/pglite-react": "^0.4.4",
+    "@uiw/react-codemirror": "^4.25.11",
     "next": "15.5.20",
     "react": "19.0.0",
     "react-dom": "19.0.0"

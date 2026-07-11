@@ -57,9 +57,13 @@
 
 ## Phase 2 — The SQL editor & result grid (the core surface)
 
-- [ ] **2.1** Add a CodeMirror SQL editor component (SQL syntax highlighting, run on
+- [x] **2.1** Add a CodeMirror SQL editor component (SQL syntax highlighting, run on
       Cmd/Ctrl+Enter).
-      _Verify:_ can type SQL and trigger a run handler.
+      _Verify:_ in-browser (Playwright) — editor renders with line numbers; typed SQL is
+      syntax-highlighted (keywords carry CM6 token classes); Ctrl+Enter fires the run handler
+      (Runs 0→1→2) and the handler receives the live document text, not the stale preload;
+      console clean. Uses @uiw/react-codemirror + @codemirror/lang-sql (PostgreSQL dialect,
+      schema-aware autocomplete). Controlled value/onChange so the parent can preload examples.
       _Commit:_ `feat: add codemirror sql editor`
 - [ ] **2.2** Execute editor SQL against PGlite; render results in a DB-client-style grid
       (monospace, zebra rows, right-aligned numbers, explicit NULL chips per [[DATASET.md]]).

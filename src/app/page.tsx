@@ -1,4 +1,5 @@
 import { VersionSmokeTest } from '@/components/VersionSmokeTest';
+import { EditorSmokeTest } from '@/components/EditorSmokeTest';
 
 export default function Home() {
   return (
@@ -9,6 +10,7 @@ export default function Home() {
         level — practicing against real Postgres running in your browser.
       </p>
       <VersionSmokeTest />
+      <EditorSmokeTest />
     </main>
   );
 }
