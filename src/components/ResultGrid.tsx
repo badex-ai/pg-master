@@ -1,17 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
+import type { QueryResult } from '@/lib/executeSql';
 
-/** Shape of a PGlite query result (the subset the grid needs). */
-export type QueryResult = {
-  rows: Record<string, unknown>[];
-  fields: { name: string; dataTypeID: number }[];
-  affectedRows?: number;
-};
+export type { QueryResult };
 
 // Postgres numeric type OIDs — these columns are right-aligned like a real DB client.
-// int2, int4, int8, oid, float4, float8, numeric, money.
-const NUMERIC_OIDS = new Set([21, 23, 20, 26, 700, 701, 1700, 790]);
+// int2, int4, int8, oid, float4, float8, numeric, money. Re-exported for the grader's
+// comparator, which uses the same set to decide value canonicalization.
+export const NUMERIC_OIDS = new Set([21, 23, 20, 26, 700, 701, 1700, 790]);
 
 // Cap how many rows are put in the DOM. A curious learner can `SELECT generate_series
 // (1, 1000000)` and the performance lessons inflate tables to millions of rows; render

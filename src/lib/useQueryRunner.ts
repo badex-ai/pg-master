@@ -2,9 +2,9 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { PGliteInterface } from '@electric-sql/pglite';
-import type { QueryResult } from '@/components/ResultGrid';
-import { toPgError, type PgError } from '@/lib/pgError';
-import { isExplain, toJsonExplain, parseExplainResult, type ExplainPlan } from '@/lib/explain';
+import type { PgError } from '@/lib/pgError';
+import { executeSql, type QueryResult } from '@/lib/executeSql';
+import type { ExplainPlan } from '@/lib/explain';
 
 /**
  * A failed run: the parsed Postgres error and the query the LEARNER typed. For an EXPLAIN
@@ -31,15 +31,11 @@ export type QueryRunner = {
 };
 
 /**
- * The SQL run state machine, independent of any editor UI so a lesson can drive runs
- * programmatically and a grader can reuse it against a pristine instance.
- *
- * Uses `db.exec` so multi-statement batches (`CREATE ...; INSERT ...;`) work like they
- * would in psql — `db.query` rejects those with a protocol error. A generation counter
- * makes overlapping runs safe: only the latest run may write state, so a slow failing
- * run can never stomp a newer successful one (the editor's Cmd+Enter can start a run
- * while another is in flight). EXPLAIN is handled here (not in the UI) so every caller —
- * including a lesson driving runs directly — gets the plan and the original-SQL mapping.
+ * The interactive SQL run state machine: a thin React shell over the pure `executeSql`, which
+ * does the actual work (EXPLAIN handling, last-statement rule, error-caret remap). This shell
+ * adds only what UI needs — a `running` flag and a generation counter so overlapping runs are
+ * safe: only the latest run may write state, so a slow failing run can never stomp a newer
+ * successful one (the editor's Cmd+Enter can start a run while another is in flight).
  */
 export function useQueryRunner(db: PGliteInterface): QueryRunner {
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
@@ -56,51 +52,19 @@ export function useQueryRunner(db: PGliteInterface): QueryRunner {
 
   const run = useCallback(
     async (sql: string) => {
-      const trimmed = sql.trim();
-      if (!trimmed) return;
-      // For an EXPLAIN, run FORMAT JSON under the hood so we can render a plan tree; the
-      // plan is identical, only the serialization differs. `positionDelta`/`bodyStart` let
-      // us map a Postgres error position back onto the SQL the learner typed.
-      const explaining = isExplain(trimmed);
-      const { sql: executed, positionDelta, bodyStart } = explaining
-        ? toJsonExplain(trimmed)
-        : { sql: trimmed, positionDelta: 0, bodyStart: 0 };
-
+      if (!sql.trim()) return;
       const gen = (generation.current += 1);
       setRunning(true);
-      const start = performance.now();
-      try {
-        const results = await db.exec(executed);
-        if (gen !== generation.current) return; // a newer run supersedes this one
-        const elapsedMs = performance.now() - start;
-        // The last statement's result is what the learner sees (mirrors psql).
-        const last = results[results.length - 1];
-        const rows = (last?.rows ?? []) as Record<string, unknown>[];
-        setOutcome({
-          result: { rows, fields: last?.fields ?? [], affectedRows: last?.affectedRows },
-          elapsedMs,
-          sql: trimmed,
-          plan: explaining ? parseExplainResult(rows) : null,
-        });
+      const res = await executeSql(db, sql);
+      if (gen !== generation.current) return; // a newer run supersedes this one
+      if (res.ok) {
+        setOutcome({ result: res.result, elapsedMs: res.elapsedMs, sql: res.sql, plan: res.plan });
         setFailure(null);
-      } catch (e) {
-        if (gen !== generation.current) return;
-        const error = toPgError(e);
-        // The error position points into the executed (rewritten) text. Shift it back onto
-        // the learner's original SQL — but ONLY for an error in the statement body (at or
-        // after `bodyStart`), where the shift is a uniform `positionDelta`. An error inside
-        // the option list we injected has no 1:1 mapping back (we spliced in `, FORMAT JSON`
-        // and, in the legacy path, collapsed whitespace), so drop the caret rather than
-        // point it at the wrong token.
-        if (error.position !== undefined && positionDelta !== 0) {
-          error.position =
-            error.position >= bodyStart ? error.position - positionDelta : undefined;
-        }
-        setFailure({ error, query: trimmed });
+      } else {
+        setFailure({ error: res.error, query: res.sql });
         setOutcome(null);
-      } finally {
-        if (gen === generation.current) setRunning(false);
       }
+      setRunning(false);
     },
     [db],
   );
