@@ -204,14 +204,30 @@
   `isSeeded` schema-presence guard both assume a partially-seeded DB can never survive a
   reload — persisting the DB would make a mid-seed failure permanently brick a learner's
   session. If persistence is ever wanted, revisit `seed.ts` first.
-- **Grading needs a pristine-state primitive (decide before 3.1/3.4).** The learner mutates
-  one shared PGlite instance freely (DELETE/UPDATE/DDL by design). Task 3.4 grades by running
-  learner SQL and reference SQL against the DB and comparing result sets — but a learner who
-  altered data earlier makes a *correct* answer grade as wrong. Before authoring the lesson
-  content model (3.1), decide the grading isolation model: reset-before-grade (simple, wipes
-  learner scratch work), a second ephemeral PGlite instance for grading, or a snapshot/restore.
-  The lesson schema must record whether a lesson assumes pristine state.
+- **Grading isolation — DECIDED (2026-07-12): a dedicated grading PGlite instance,
+  created once and reset-reseeded per grade.** The learner mutates the main shared instance
+  freely (DELETE/UPDATE/DDL by design); grading a write-the-query answer against that mutated
+  world would fail correct answers. Options weighed: (A) reset-before-grade on the main DB —
+  rejected: wipes the learner's scratch work and visibly disturbs the UI (console clear, live
+  panels rebuild); (B) a second isolated instance — chosen; (C) snapshot/restore — not pursued
+  (unverified API, and B is fast enough). **Measured, not assumed** (headless, this PG18 build):
+  creating a *fresh* seeded instance per grade costs ~3.0 s (the `PGlite.create()` WASM boot
+  dominates) — too slow for interactive grading. Creating the grading instance **once** (~4.4 s,
+  lazy/one-time) and then `DROP SCHEMA + reseed` per grade costs **~290 ms median** — 10× faster,
+  interactive. So: one long-lived grading instance, `resetDatabase()`-style reseed before each
+  grade, learner's main DB never touched.
+  **Consequence for 3.1:** the lesson schema needs NO `assumesPristine` flag on the learner DB —
+  grading always runs against a freshly-reseeded grading instance, invisibly. Reference results
+  are computed there, not against what the learner sees.
+  **Consequence for 3.4 / HIGH-1:** extract a pure `executeSql(db, sql)` (discriminated-union
+  result) from `useQueryRunner` so the grader can drive runs against the grading `db` without
+  touching console state or the generation counter. Do this extraction as part of 3.1/3.4 prep.
 - **Deep review (Fable) at Phase 1 milestone:** done at HEAD `97c9815`+fixes. HIGH-1 (atomic
   seed + boot error path), HIGH-2 (`DROP SCHEMA` reset removes learner DDL), HIGH-3 (permanent
   DATASET.md fidelity test, `npm test`) all addressed. Baseline tag `deep-review/last` set.
-  Next deep review: end of Phase 2.
+- **Deep review (Fable) at Phase 2 milestone:** done over the 6-commit delta (tasks 2.4–2.5 +
+  fixes). Verdict APPROVE. Acted on: MEDIUM-1 (commented EXPLAIN no longer fabricates a syntax
+  error) and MEDIUM-2 (plan tree renders every condition + Rows Removed by Filter). Deferred to
+  Phase-3 prep: HIGH-1 (extract `executeSql` + discriminated union — now tied to the grading
+  decision above) and MEDIUM-3 (a `useAppLiveQuery` wrapper, once a 2nd live view exists).
+  Baseline tag `deep-review/last` moved to `f2ad61d`. Next deep review: end of Phase 3.
