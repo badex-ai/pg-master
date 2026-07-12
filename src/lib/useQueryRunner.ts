@@ -59,12 +59,12 @@ export function useQueryRunner(db: PGliteInterface): QueryRunner {
       const trimmed = sql.trim();
       if (!trimmed) return;
       // For an EXPLAIN, run FORMAT JSON under the hood so we can render a plan tree; the
-      // plan is identical, only the serialization differs. `positionDelta` lets us map a
-      // Postgres error position back onto the SQL the learner typed.
+      // plan is identical, only the serialization differs. `positionDelta`/`bodyStart` let
+      // us map a Postgres error position back onto the SQL the learner typed.
       const explaining = isExplain(trimmed);
-      const { sql: executed, positionDelta } = explaining
+      const { sql: executed, positionDelta, bodyStart } = explaining
         ? toJsonExplain(trimmed)
-        : { sql: trimmed, positionDelta: 0 };
+        : { sql: trimmed, positionDelta: 0, bodyStart: 0 };
 
       const gen = (generation.current += 1);
       setRunning(true);
@@ -86,10 +86,15 @@ export function useQueryRunner(db: PGliteInterface): QueryRunner {
       } catch (e) {
         if (gen !== generation.current) return;
         const error = toPgError(e);
-        // The error position points into the executed (rewritten) text; shift it back so
-        // the caret lands on the learner's original SQL.
+        // The error position points into the executed (rewritten) text. Shift it back onto
+        // the learner's original SQL — but ONLY for an error in the statement body (at or
+        // after `bodyStart`), where the shift is a uniform `positionDelta`. An error inside
+        // the option list we injected has no 1:1 mapping back (we spliced in `, FORMAT JSON`
+        // and, in the legacy path, collapsed whitespace), so drop the caret rather than
+        // point it at the wrong token.
         if (error.position !== undefined && positionDelta !== 0) {
-          error.position = Math.max(1, error.position - positionDelta);
+          error.position =
+            error.position >= bodyStart ? error.position - positionDelta : undefined;
         }
         setFailure({ error, query: trimmed });
         setOutcome(null);

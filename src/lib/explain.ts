@@ -47,8 +47,17 @@ const OPTION_KEYWORDS =
 // the paren also accepts the no-space `EXPLAIN(...)` spelling Postgres permits.
 const EXPLAIN_RE = /^\s*EXPLAIN\s*(\(([^)]*)\)|(\s(?:ANALYZE\s+)?(?:VERBOSE\s+)?))/i;
 
-/** A rewritten EXPLAIN plus how far the statement text shifted, so error carets can realign. */
-export type RewrittenExplain = { sql: string; positionDelta: number };
+/**
+ * A rewritten EXPLAIN plus the data an error caret needs to realign:
+ *   - `positionDelta`  — how far the statement body shifted right.
+ *   - `bodyStart`      — the 1-based offset in the REWRITTEN sql where the statement body
+ *                        begins. Only an error at or after this offset has a reliable 1:1
+ *                        mapping back onto the original text (subtract positionDelta). An
+ *                        error inside the option list we constructed does not — we inserted
+ *                        `, FORMAT JSON` there and, in the legacy path, collapsed whitespace
+ *                        — so the caller drops the caret rather than point it at the wrong token.
+ */
+export type RewrittenExplain = { sql: string; positionDelta: number; bodyStart: number };
 
 /** True if the trimmed SQL is an EXPLAIN statement. */
 export function isExplain(sql: string): boolean {
@@ -70,20 +79,28 @@ export function isExplain(sql: string): boolean {
  * unchanged with a zero delta — Postgres then runs it verbatim and any real error surfaces.
  */
 export function toJsonExplain(sql: string): RewrittenExplain {
+  // A pass-through: SQL runs verbatim, so positions already point at the original text.
+  const unchanged: RewrittenExplain = { sql, positionDelta: 0, bodyStart: 0 };
+
   const m = sql.match(EXPLAIN_RE);
-  if (!m) return { sql, positionDelta: 0 };
+  if (!m) return unchanged;
   const paren = m[2]; // contents of (...) form, if any
   const legacy = m[3]; // leading-space + ANALYZE/VERBOSE keyword form, if any
 
   if (paren !== undefined) {
     // Only a real option list, not a parenthesized statement like `(SELECT 1)`.
-    if (!OPTION_KEYWORDS.test(paren)) return { sql, positionDelta: 0 };
-    if (/\bFORMAT\b/i.test(paren)) return { sql, positionDelta: 0 }; // caller chose a format
+    if (!OPTION_KEYWORDS.test(paren)) return unchanged;
+    if (/\bFORMAT\b/i.test(paren)) return unchanged; // caller chose a format
     const rest = sql.slice(m[0].length);
     const head = `EXPLAIN (${paren.trim()}, FORMAT JSON)`;
     const gap = rest.startsWith(' ') ? '' : ' ';
     const rewritten = `${head}${gap}${rest}`;
-    return { sql: rewritten, positionDelta: rewritten.length - sql.length };
+    // bodyStart: 1-based offset where the statement body (`rest`) begins in `rewritten`.
+    return {
+      sql: rewritten,
+      positionDelta: rewritten.length - sql.length,
+      bodyStart: rewritten.length - rest.length + 1,
+    };
   }
 
   // Legacy / no-options form. Preserve the exact statement body (don't trim it, so the
@@ -92,7 +109,11 @@ export function toJsonExplain(sql: string): RewrittenExplain {
   const legacyOpts = (legacy ?? '').trim().replace(/\s+/g, ', ');
   const head = legacyOpts ? `EXPLAIN (${legacyOpts}, FORMAT JSON)` : 'EXPLAIN (FORMAT JSON)';
   const rewritten = `${head} ${rest}`;
-  return { sql: rewritten, positionDelta: rewritten.length - sql.length };
+  return {
+    sql: rewritten,
+    positionDelta: rewritten.length - sql.length,
+    bodyStart: rewritten.length - rest.length + 1,
+  };
 }
 
 /** Pull the plan out of an `EXPLAIN (FORMAT JSON)` result row, or null if the shape is off. */

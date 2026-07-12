@@ -41,6 +41,7 @@ before(() => {
       '--module', 'esnext',
       '--target', 'es2022',
       '--moduleResolution', 'bundler',
+      '--strict', // match the project's tsconfig; project-wide `tsc --noEmit` is the real gate
     ],
     { stdio: 'pipe' },
   );
@@ -138,15 +139,49 @@ test('non-EXPLAIN SQL passes through unchanged', async () => {
   assert.equal(out.positionDelta, 0);
 });
 
-test('positionDelta maps an error caret back onto the original SQL', async () => {
+// The exact caret remap useQueryRunner applies: shift a body-error back onto the
+// original text, but drop the caret for an error inside the injected option list.
+// Kept in lockstep with the runner so these tests guard the real behavior.
+function remap(original, posInExecuted) {
+  const { positionDelta, bodyStart } = mod.toJsonExplain(original);
+  if (positionDelta === 0) return posInExecuted;
+  return posInExecuted >= bodyStart ? posInExecuted - positionDelta : undefined;
+}
+
+test('caret in the statement body maps back onto the original SQL', async () => {
   const { toJsonExplain } = await load();
   // `EXPLAIN SELECT * FROM nope` → the executed text has `nope` shifted right by delta.
   const original = 'EXPLAIN SELECT * FROM nope';
-  const { sql: executed, positionDelta } = toJsonExplain(original);
+  const { sql: executed } = toJsonExplain(original);
   const posInExecuted = executed.indexOf('nope') + 1; // Postgres positions are 1-based
-  const posInOriginal = posInExecuted - positionDelta;
+  const posInOriginal = remap(original, posInExecuted);
   // The mapped-back position must point at `nope` in what the learner typed.
   assert.equal(original.slice(posInOriginal - 1, posInOriginal - 1 + 4), 'nope');
+});
+
+test('caret inside the injected option list is dropped, not mis-mapped', async () => {
+  const { toJsonExplain } = await load();
+  // A learner typos an option in a multi-option list. Postgres reports the position of
+  // the bad option (here `BUFERS`) in the EXECUTED text. That offset sits BEFORE the
+  // `, FORMAT JSON` we spliced in, so subtracting the whole delta would point the caret
+  // at the wrong token in the original. The runner must drop the caret instead.
+  const original = 'EXPLAIN (ANALYZE, BUFERS) SELECT 1';
+  const { sql: executed } = toJsonExplain(original);
+  const posInExecuted = executed.indexOf('BUFERS') + 1; // where Postgres would point
+  // `BUFERS` is at the same offset in both strings (nothing before it shifted); a naive
+  // `pos - delta` would land inside `EXPLAIN`. remap must return undefined (no caret).
+  assert.equal(remap(original, posInExecuted), undefined);
+});
+
+test('bodyStart marks where the statement body begins in the rewritten SQL', async () => {
+  const { toJsonExplain } = await load();
+  for (const original of ['EXPLAIN SELECT 1', 'EXPLAIN ANALYZE SELECT 1', 'EXPLAIN (ANALYZE) SELECT 1']) {
+    const { sql, positionDelta, bodyStart } = toJsonExplain(original);
+    // The char at bodyStart in the rewritten text is the first char of the original body,
+    // and mapping bodyStart back (−delta) lands on that same first body char in the original.
+    assert.equal(sql[bodyStart - 1], original[bodyStart - 1 - positionDelta]);
+    assert.ok(bodyStart - positionDelta >= 1, 'mapped body start must be a valid 1-based position');
+  }
 });
 
 test('parseExplainResult unwraps the QUERY PLAN column shape', async () => {
