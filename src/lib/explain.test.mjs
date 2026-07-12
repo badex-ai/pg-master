@@ -139,6 +139,21 @@ test('non-EXPLAIN SQL passes through unchanged', async () => {
   assert.equal(out.positionDelta, 0);
 });
 
+test('a comment before the EXPLAIN options is left untouched, not turned into an error', async () => {
+  const { toJsonExplain } = await load();
+  // Valid Postgres, but our rewrite can't safely reach past a comment to the legacy
+  // options — prepending `(FORMAT JSON)` would strand the `ANALYZE` after a paren list
+  // and fabricate a syntax error. Both spellings must pass through unchanged.
+  for (const sql of ['EXPLAIN /* why */ ANALYZE SELECT 1', 'EXPLAIN -- note\nANALYZE SELECT 1']) {
+    const out = toJsonExplain(sql);
+    assert.equal(out.sql, sql, `must not rewrite: ${JSON.stringify(sql)}`);
+    assert.equal(out.positionDelta, 0);
+  }
+  // A comment in the statement BODY (after a real option list) is fine — still rewritten.
+  const body = toJsonExplain('EXPLAIN (ANALYZE) /* c */ SELECT 1');
+  assert.equal(body.sql, 'EXPLAIN (ANALYZE, FORMAT JSON) /* c */ SELECT 1');
+});
+
 // The exact caret remap useQueryRunner applies: shift a body-error back onto the
 // original text, but drop the caret for an error inside the injected option list.
 // Kept in lockstep with the runner so these tests guard the real behavior.

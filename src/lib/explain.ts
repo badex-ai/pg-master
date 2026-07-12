@@ -82,6 +82,13 @@ export function toJsonExplain(sql: string): RewrittenExplain {
   // A pass-through: SQL runs verbatim, so positions already point at the original text.
   const unchanged: RewrittenExplain = { sql, positionDelta: 0, bodyStart: 0 };
 
+  // A comment between EXPLAIN and its options/body defeats our simple rewrite: EXPLAIN_RE's
+  // `\s` doesn't span `--`/`/* */`, so a legacy `EXPLAIN /* x */ ANALYZE …` would get
+  // `(FORMAT JSON)` prepended *before* the comment, leaving the legacy ANALYZE stranded
+  // after a paren option list — a fabricated syntax error on valid SQL. Pass such SQL
+  // through untouched (it renders as a raw-text plan) rather than corrupt it.
+  if (/^\s*EXPLAIN\s*(--|\/\*)/i.test(sql)) return unchanged;
+
   const m = sql.match(EXPLAIN_RE);
   if (!m) return unchanged;
   const paren = m[2]; // contents of (...) form, if any
