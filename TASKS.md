@@ -125,8 +125,15 @@
       updates columns+rows and renders NULL chips (guest order 105, NULL shipped_at);
       refetches after a reset; console clean. Table name is a fixed allowlist (safe identifier).
       _Commit:_ `feat: add always-visible sample data panel`
-- [ ] **2.5** Render `EXPLAIN` / `EXPLAIN ANALYZE` output readably (plan tree, not raw text).
-      _Verify:_ `EXPLAIN SELECT ...` shows a formatted plan.
+- [x] **2.5** Render `EXPLAIN` / `EXPLAIN ANALYZE` output readably (plan tree, not raw text).
+      _Verify:_ in-browser (Playwright) — `EXPLAIN ANALYZE <join>` renders a nested plan tree
+      (Hash Join → Seq Scan on orders + Hash → Seq Scan on users) with node types, relation,
+      cost/rows estimates, ANALYZE actuals (rows + ms), and the join condition; estimate-vs-
+      actual drift is visible; a plain SELECT still shows the grid (no regression); console
+      clean. An EXPLAIN is transparently re-run with FORMAT JSON added (plan is identical, only
+      serialization changes). The rewriter was checked against the official PG18 EXPLAIN
+      grammar (legacy form is only `[ANALYZE] [VERBOSE]`, in that order) and all 8 EXPLAIN
+      forms verified to run in real PGlite.
       _Commit:_ `feat: format explain output as a plan view`
 
 ## Phase 3 — Lesson & quiz engine
