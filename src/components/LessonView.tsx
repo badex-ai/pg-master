@@ -3,6 +3,7 @@
 import type { Lesson } from '@/lib/content/types';
 import { TeachContent } from './TeachContent';
 import { QueryConsole } from './QueryConsole';
+import { QuizFlow } from './QuizFlow';
 
 /**
  * Renders one lesson: its teach content (markdown), then the live editor preloaded with the
@@ -29,6 +30,8 @@ export function LessonView({ lesson }: { lesson: Lesson }) {
         {/* Preload the worked example; fall back to a bare SELECT if the lesson omits one. */}
         <QueryConsole initialSql={lesson.exampleSql ?? 'SELECT 1;'} />
       </section>
+
+      <QuizFlow questions={lesson.questions} />
     </article>
   );
 }

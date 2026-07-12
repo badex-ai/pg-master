@@ -162,9 +162,21 @@
       TS, rendered as React text nodes (never dangerouslySetInnerHTML). `LessonView` composes
       title + teach + a `QueryConsole` seeded with `exampleSql`.
       _Commit:_ `feat: add lesson view with teach content and live example`
-- [ ] **3.3** Quiz flow: present a question, accept an answer (multiple-choice AND
+- [x] **3.3** Quiz flow: present a question, accept an answer (multiple-choice AND
       write-the-query typed against PGlite), then reveal answer + reasoning.
-      _Verify:_ a predict-output question and a write-the-query question both work.
+      _Verify:_ in-browser (Playwright) — all three wired kinds work: multiple-choice (select →
+      Submit → reveal disables options, marks right/wrong, shows why + distractors), predict-output
+      (Reveal result shows the authored `(0 rows)` for the `= NULL` trap + why), write-query
+      (embedded live console + Show answer reveals the reference). Console clean. Also fixed a
+      content bug found by verifying against the seed: q2 claimed 2 NULL full_names / answer 8;
+      the seed has exactly 1 (id 4) → answer 9. Typecheck clean, 35 tests green.
+      _Design:_ 3.3 = interaction + reveal only; grading verdicts → 3.4.
+      `QuizFlow` inside `LessonView`, sequential cards, answer state lifted to QuizFlow
+      (`Record<id,{status,selectedIndex?,correct?}>`) for 4.2. Kinds wired: multiple-choice,
+      write-query, predict-output + a reveal-only fallback (also correct for explain-mechanism).
+      Reveal is terminal (no re-answer). Traps heeded: prompts rendered via TeachContent;
+      distractors shown as a list; predict-output uses its own static table (not ResultGrid); no
+      `onRunComplete` passed (avoids the memoization/infinite-loop hazard). HIGH-1 deferred to 3.4.
       _Commit:_ `feat: add quiz flow with answer and reasoned reveal`
 - [ ] **3.4** Write-the-query grading: run the learner's SQL and the reference SQL against
       PGlite, compare result sets, report match/mismatch with the diff.

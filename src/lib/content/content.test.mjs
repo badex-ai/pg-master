@@ -112,6 +112,6 @@ test('kind-specific required fields are present', async () => {
   assert.equal(mc.kind, 'multiple-choice');
   assert.ok(Array.isArray(mc.choices) && mc.choices.length >= 2);
   assert.ok(mc.answerIndex >= 0 && mc.answerIndex < mc.choices.length, 'answerIndex in range');
-  // The trap answer is 8 (COUNT skips NULLs), not 10.
-  assert.equal(mc.choices[mc.answerIndex], '8');
+  // The trap answer is 9 (COUNT skips the one NULL full_name), not 10.
+  assert.equal(mc.choices[mc.answerIndex], '9');
 });

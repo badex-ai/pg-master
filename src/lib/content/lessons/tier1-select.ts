@@ -52,23 +52,42 @@ literals are all valid outputs, not just bare columns.`,
       id: 'q2',
       kind: 'multiple-choice',
       prompt:
-        'The `users` table has 10 rows, two of which have a NULL `full_name`. ' +
-        'How many rows does `SELECT COUNT(full_name) FROM users;` return as its count?',
-      choices: ['10', '8', '2', 'NULL'],
-      answerIndex: 1, // 8
+        'The `users` table has 10 rows, one of which (id 4) has a NULL `full_name`. ' +
+        'What does `SELECT COUNT(full_name) FROM users;` return?',
+      choices: ['10', '9', '1', 'NULL'],
+      answerIndex: 1, // 9 — verified against the seed
       themes: ['null-correctness'],
       reveal: {
-        correct: '8',
+        correct: '9',
         why:
-          'COUNT(column) counts only non-NULL values of that column, so the two NULL full_names ' +
-          'are skipped: 10 − 2 = 8. This is the classic COUNT(nullable) trap.',
+          'COUNT(column) counts only non-NULL values of that column, so the one NULL full_name ' +
+          'is skipped: 10 − 1 = 9. This is the classic COUNT(nullable) trap.',
         distractors: [
           '10 would be COUNT(*), which counts rows regardless of NULLs.',
-          '2 is the number of NULLs, i.e. the rows COUNT(full_name) skips — the inverse.',
+          '1 is the number of NULLs, i.e. the rows COUNT(full_name) skips — the inverse.',
           'COUNT never returns NULL; with no rows it returns 0.',
         ],
         reproduceSql:
           `SELECT COUNT(*) AS all_rows, COUNT(full_name) AS non_null_names FROM users;`,
+      },
+    },
+    {
+      id: 'q3',
+      kind: 'predict-output',
+      prompt:
+        'One user (id 4) has a NULL `full_name`. What rows does this return?\n\n' +
+        '```sql\nSELECT id FROM users WHERE full_name = NULL;\n```',
+      sql: `SELECT id FROM users WHERE full_name = NULL`,
+      // Verified against the seed: zero rows — `= NULL` is never true.
+      expected: { columns: ['id'], rows: [] },
+      themes: ['null-correctness', 'logical-eval-order'],
+      reveal: {
+        correct: 'Zero rows.',
+        why:
+          'A comparison with NULL using `=` evaluates to UNKNOWN, never TRUE, so WHERE keeps no ' +
+          'rows — even the row whose full_name really is NULL. NULL means "unknown", and unknown ' +
+          '= unknown is not true. To match NULLs you must use `IS NULL`, which returns id 4.',
+        reproduceSql: `SELECT id FROM users WHERE full_name IS NULL;`,
       },
     },
   ],
