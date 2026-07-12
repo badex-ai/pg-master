@@ -150,9 +150,17 @@
       `setupSql` on the reseeded grading instance (per the grading-isolation decision — no
       pristine flag needed); write-query comparison configurable per question (`compare.orderMatters`).
       _Commit:_ `feat: define lesson and question content model`
-- [ ] **3.2** Lesson view: render teach content (markdown) + worked example + the live editor
+- [x] **3.2** Lesson view: render teach content (markdown) + worked example + the live editor
       pre-loaded with the example.
-      _Verify:_ a sample lesson renders end to end.
+      _Verify:_ in-browser (Playwright) — the sample lesson (unit 1.1) renders end to end:
+      "Tier 1 · Unit 1.1" badge + title, teach markdown (## heading, paragraphs with inline
+      `code` and **bold**, a fenced sql block) all as text nodes, and the QueryConsole preloaded
+      with `exampleSql`; running the preloaded example returned "10 rows · 29 ms" with the NULL
+      chip on row 4. Typecheck clean, 35 tests green, console clean.
+      _Design:_ zero-dep `TeachContent` renderer for the fixed teach markdown subset (headings,
+      paragraphs, bold, inline code, ```sql fences) — no react-markdown; content is trusted typed
+      TS, rendered as React text nodes (never dangerouslySetInnerHTML). `LessonView` composes
+      title + teach + a `QueryConsole` seeded with `exampleSql`.
       _Commit:_ `feat: add lesson view with teach content and live example`
 - [ ] **3.3** Quiz flow: present a question, accept an answer (multiple-choice AND
       write-the-query typed against PGlite), then reveal answer + reasoning.
