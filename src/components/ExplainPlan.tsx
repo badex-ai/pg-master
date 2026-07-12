@@ -2,16 +2,27 @@
 
 import type { ExplainPlan, PlanNode } from '@/lib/explain';
 
-/** The scan/join/etc. condition on a node, whichever applies. */
-function nodeCondition(node: PlanNode): string | null {
-  return (
-    node['Index Cond'] ??
-    node['Hash Cond'] ??
-    node['Recheck Cond'] ??
-    node['Filter'] ??
-    (node['Sort Key'] ? node['Sort Key'].join(', ') : null) ??
-    null
-  );
+/**
+ * All conditions on a node, as labeled lines — not just the first. A node commonly carries
+ * several at once (e.g. a Bitmap Heap Scan has both `Recheck Cond` and `Filter`), and the
+ * index-cond-vs-filter distinction is the whole point of the index lessons, so we show every
+ * one. `Filter` also gets its `Rows Removed by Filter` count, the sharpest estimate-vs-actual
+ * teaching number under ANALYZE.
+ */
+function nodeConditions(node: PlanNode): { label: string; value: string }[] {
+  const lines: { label: string; value: string }[] = [];
+  if (node['Index Cond'] !== undefined) lines.push({ label: 'Index Cond', value: node['Index Cond'] });
+  if (node['Recheck Cond'] !== undefined) lines.push({ label: 'Recheck Cond', value: node['Recheck Cond'] });
+  if (node['Hash Cond'] !== undefined) lines.push({ label: 'Hash Cond', value: node['Hash Cond'] });
+  if (node['Merge Cond'] !== undefined) lines.push({ label: 'Merge Cond', value: node['Merge Cond'] });
+  if (node['Join Filter'] !== undefined) lines.push({ label: 'Join Filter', value: node['Join Filter'] });
+  if (node['Filter'] !== undefined) {
+    const removed = node['Rows Removed by Filter'];
+    const value = removed !== undefined ? `${node['Filter']} (removed ${removed} rows)` : node['Filter'];
+    lines.push({ label: 'Filter', value });
+  }
+  if (node['Sort Key'] !== undefined) lines.push({ label: 'Sort Key', value: node['Sort Key'].join(', ') });
+  return lines;
 }
 
 /** The relation/index a node reads, for the header line. */
@@ -24,7 +35,7 @@ function nodeTarget(node: PlanNode): string | null {
 
 function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
   const target = nodeTarget(node);
-  const condition = nodeCondition(node);
+  const conditions = nodeConditions(node);
   // ANALYZE actuals: gate on Actual Rows, not time — `TIMING OFF` drops the time fields
   // but still reports rows/loops (the estimate-vs-actual row drift is the core lesson).
   const hasActuals = node['Actual Rows'] !== undefined;
@@ -63,9 +74,11 @@ function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
           )}
         </div>
 
-        {condition && (
-          <div className="font-mono text-xs text-neutral-400">{condition}</div>
-        )}
+        {conditions.map((c) => (
+          <div key={c.label} className="font-mono text-xs text-neutral-400">
+            <span className="text-neutral-500">{c.label}:</span> {c.value}
+          </div>
+        ))}
       </div>
 
       {node['Plans'] && node['Plans'].length > 0 && (

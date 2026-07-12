@@ -27,6 +27,9 @@ export type PlanNode = {
   'Index Cond'?: string;
   'Hash Cond'?: string;
   'Recheck Cond'?: string;
+  'Join Filter'?: string;
+  'Merge Cond'?: string;
+  'Rows Removed by Filter'?: number;
   'Sort Key'?: string[];
   'Plans'?: PlanNode[];
   [key: string]: unknown;
