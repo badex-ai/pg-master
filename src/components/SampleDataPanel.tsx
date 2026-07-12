@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { usePGlite } from '@electric-sql/pglite-react';
-import { useResetEpoch } from '@/lib/db/provider';
+import { useState } from 'react';
+import { useLiveQuery } from '@electric-sql/pglite-react';
 import { ResultGrid, type QueryResult } from './ResultGrid';
 
 /**
@@ -36,41 +35,21 @@ const SAMPLE_LIMIT = 10;
  * Refetches when the table changes and after a database reset.
  */
 export function SampleDataPanel() {
-  const db = usePGlite();
-  const resetEpoch = useResetEpoch();
-
   const [table, setTable] = useState<SampleTable>('users');
-  const [result, setResult] = useState<QueryResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(
-    async (t: SampleTable) => {
-      try {
-        const res = await db.query(`SELECT * FROM "${t}" ORDER BY 1 LIMIT ${SAMPLE_LIMIT}`);
-        setResult({
-          rows: res.rows as Record<string, unknown>[],
-          fields: res.fields,
-          affectedRows: res.affectedRows,
-        });
-        setError(null);
-      } catch (e) {
-        setError(String(e));
-        setResult(null);
-      }
-    },
-    [db],
-  );
-
-  // Load on table change and after a reset (resetEpoch bump re-fetches current table).
-  useEffect(() => {
-    void load(table);
-  }, [load, table, resetEpoch]);
+  // A live query: the panel reflects the active table's current rows and updates itself
+  // whenever the data changes (a learner's INSERT/UPDATE/DELETE, or a reset re-seed), so
+  // it never shows stale rows. The table name is from a fixed allowlist — safe to inline.
+  const live = useLiveQuery(`SELECT * FROM "${table}" ORDER BY 1 LIMIT ${SAMPLE_LIMIT}`);
+  const result: QueryResult | null = live
+    ? { rows: live.rows as Record<string, unknown>[], fields: live.fields }
+    : null;
 
   return (
     <section className="flex flex-col gap-2" aria-label="Sample data">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-neutral-600">Sample data</h2>
-        <span className="font-mono text-xs text-neutral-400">the curated {SAMPLE_LIMIT} rows</span>
+        <span className="font-mono text-xs text-neutral-400">live · first {SAMPLE_LIMIT} rows</span>
       </div>
 
       <div className="flex flex-wrap gap-1" role="tablist" aria-label="Tables">
@@ -92,9 +71,7 @@ export function SampleDataPanel() {
         ))}
       </div>
 
-      {error ? (
-        <p className="font-mono text-sm text-red-600">{error}</p>
-      ) : result ? (
+      {result ? (
         <ResultGrid result={result} />
       ) : (
         <p className="font-mono text-sm text-neutral-400">Loading…</p>
