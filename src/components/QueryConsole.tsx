@@ -16,6 +16,8 @@ type QueryConsoleProps = {
   initialSql?: string;
   /** Notified after each run settles, so a lesson can react to (or grade) the result. */
   onRunComplete?: (result: RunOutcome | RunFailure) => void;
+  /** Notified on every edit with the current SQL, so a grader can read the answer text. */
+  onSqlChange?: (sql: string) => void;
 };
 
 /**
@@ -24,13 +26,22 @@ type QueryConsoleProps = {
  * lives in useQueryRunner so a lesson could reuse it. Keeps autocomplete honest by
  * refreshing the editor schema from information_schema after each run.
  */
-export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete }: QueryConsoleProps) {
+export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete, onSqlChange }: QueryConsoleProps) {
   const db = usePGlite();
   const reset = useResetDatabase();
   const resetEpoch = useResetEpoch();
   const runner = useQueryRunner(db);
 
   const [sql, setSql] = useState(initialSql);
+
+  // Mirror edits to the current SQL out to a grader, while keeping local editor state.
+  const handleSqlChange = useCallback(
+    (next: string) => {
+      setSql(next);
+      onSqlChange?.(next);
+    },
+    [onSqlChange],
+  );
   const [schema, setSchema] = useState<EditorSchema>(DEFAULT_SCHEMA);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -90,7 +101,7 @@ export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete }
 
   return (
     <div className="flex flex-col gap-3">
-      <SqlEditor value={sql} onChange={setSql} onRun={run} schema={schema} />
+      <SqlEditor value={sql} onChange={handleSqlChange} onRun={run} schema={schema} />
 
       <div className="flex items-center gap-3">
         <button

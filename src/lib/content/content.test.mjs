@@ -115,3 +115,15 @@ test('kind-specific required fields are present', async () => {
   // The trap answer is 9 (COUNT skips the one NULL full_name), not 10.
   assert.equal(mc.choices[mc.answerIndex], '9');
 });
+
+test('every write-query reference is a non-mutating SELECT (grading invariant)', async () => {
+  const l = await load();
+  // The grader runs referenceSql FIRST as the oracle on pristine state, then the learner's SQL
+  // against the same state. A mutating reference would break that "same state" guarantee, and a
+  // reference with no result columns can't be compared. Enforce both at authoring time.
+  const mutating = /\b(insert|update|delete|drop|alter|create|truncate)\b/i;
+  for (const q of l.questions.filter((q) => q.kind === 'write-query')) {
+    assert.match(q.referenceSql, /select/i, `${q.id}: referenceSql must SELECT`);
+    assert.doesNotMatch(q.referenceSql, mutating, `${q.id}: referenceSql must not mutate`);
+  }
+});

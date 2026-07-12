@@ -178,12 +178,25 @@
       distractors shown as a list; predict-output uses its own static table (not ResultGrid); no
       `onRunComplete` passed (avoids the memoization/infinite-loop hazard). HIGH-1 deferred to 3.4.
       _Commit:_ `feat: add quiz flow with answer and reasoned reveal`
-- [ ] **3.4** Write-the-query grading: run the learner's SQL and the reference SQL against
+- [x] **3.4** Write-the-query grading: run the learner's SQL and the reference SQL against
       PGlite, compare result sets, report match/mismatch with the diff.
-      _Verify:_ a correct answer passes; a wrong one shows how the result differs.
-      _Note (from deep review):_ grade against pristine state, not the learner's mutated DB
-      (see grading-isolation decision in the log) — otherwise prior edits make a correct
-      answer grade as wrong.
+      _Verify:_ in-browser (Playwright) — the correct answer to q1 (`… WHERE status = 'active'`)
+      shows "✓ Correct" and reveals the reference; a wrong answer (omit the WHERE) shows
+      "Expected 7 rows, got 10" + a "Shouldn't be in your result (3)" grid listing exactly the 3
+      non-active users (anon4/edsger/barbara). Console clean. Comparator has 13 unit tests
+      (numeric scale, NaN≠NULL, bigint, money, jsonb key order, multiset, order); 49 tests green.
+      _Design (with a live PGlite probe of JS return types):_
+      Two commits — (1) `refactor(runner): extract pure executeSql`; (2) this feat. Grading runs on
+      a dedicated PGlite created once + reset-reseeded per grade (instance.ts, globalThis-cached,
+      prewarmed on card mount, mutex-serialized). Per-grade: DISCARD ALL (temp tables survive
+      DROP SCHEMA — verified) → resetDatabase → setupSql (question overrides lesson) → REFERENCE
+      first (oracle on pristine state) → learner → compareResults. Comparator (compare.ts, zero
+      imports) encodes each cell to an OID-guided type-tagged pair so `avg` scale noise, NaN,
+      bigint, and money don't misgrade; unordered multiset by default, order-aware when
+      `compare.orderMatters`. Diff = missing/extra sample rows + counts. content.test asserts every
+      referenceSql is a non-mutating SELECT (the oracle invariant). HIGH-1 done here as step 1.
+      _Known risk (logged):_ no statement timeout — `pg_sleep` in a graded answer wedges the
+      grading mutex; exposure-parity with the console, deferred.
       _Commit:_ `feat: grade write-the-query answers by result-set comparison`
 
 ## Phase 4 — Navigation, progress, content authoring

@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Question, Reveal, ExpectedResult } from '@/lib/content/types';
+import { grade, type GradeResult } from '@/lib/grading/grade';
+import { prewarmGradingDb } from '@/lib/grading/instance';
 import { TeachContent } from './TeachContent';
 import { QueryConsole } from './QueryConsole';
+import { ResultGrid } from './ResultGrid';
+import { QueryError } from './QueryError';
 
 /**
  * The quiz surface for a lesson: each question as a card, answered in place, then a reveal.
@@ -21,7 +25,13 @@ import { QueryConsole } from './QueryConsole';
 
 type QuestionState = { status: 'unanswered' | 'revealed'; selectedIndex?: number; correct?: boolean };
 
-export function QuizFlow({ questions }: { questions: Question[] }) {
+export function QuizFlow({
+  questions,
+  lessonSetupSql,
+}: {
+  questions: Question[];
+  lessonSetupSql?: string;
+}) {
   const [state, setState] = useState<Record<string, QuestionState>>({});
 
   const setQ = (id: string, next: QuestionState) => setState((s) => ({ ...s, [id]: next }));
@@ -36,6 +46,7 @@ export function QuizFlow({ questions }: { questions: Question[] }) {
           key={q.id}
           index={i + 1}
           question={q}
+          lessonSetupSql={lessonSetupSql}
           state={state[q.id] ?? { status: 'unanswered' }}
           onChange={(next) => setQ(q.id, next)}
         />
@@ -47,11 +58,13 @@ export function QuizFlow({ questions }: { questions: Question[] }) {
 function QuestionCard({
   index,
   question,
+  lessonSetupSql,
   state,
   onChange,
 }: {
   index: number;
   question: Question;
+  lessonSetupSql?: string;
   state: QuestionState;
   onChange: (next: QuestionState) => void;
 }) {
@@ -65,7 +78,7 @@ function QuestionCard({
         </div>
       </div>
 
-      <QuestionBody question={question} state={state} onChange={onChange} />
+      <QuestionBody question={question} lessonSetupSql={lessonSetupSql} state={state} onChange={onChange} />
 
       {state.status === 'revealed' && <RevealPanel reveal={question.reveal} />}
     </div>
@@ -75,10 +88,12 @@ function QuestionCard({
 /** The kind-specific answer UI. */
 function QuestionBody({
   question,
+  lessonSetupSql,
   state,
   onChange,
 }: {
   question: Question;
+  lessonSetupSql?: string;
   state: QuestionState;
   onChange: (next: QuestionState) => void;
 }) {
@@ -134,28 +149,15 @@ function QuestionBody({
       );
     }
 
-    case 'write-query': {
-      // Run freely in the console; "Show answer" reveals the reference. No grading here (3.4).
+    case 'write-query':
       return (
-        <div className="flex flex-col gap-2">
-          <QueryConsole initialSql="" />
-          {!revealed && (
-            <button
-              type="button"
-              onClick={() => onChange({ status: 'revealed' })}
-              className="self-start rounded border border-neutral-300 px-3 py-1 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-            >
-              Show answer
-            </button>
-          )}
-          {revealed && (
-            <pre className="overflow-x-auto rounded border border-neutral-200 bg-neutral-50 p-3 font-mono text-sm text-neutral-800">
-              <code>{question.referenceSql}</code>
-            </pre>
-          )}
-        </div>
+        <WriteQueryCard
+          question={question}
+          lessonSetupSql={lessonSetupSql}
+          revealed={revealed}
+          onOutcome={(correct) => onChange({ status: 'revealed', correct })}
+        />
       );
-    }
 
     case 'predict-output': {
       return (
@@ -191,6 +193,141 @@ function QuestionBody({
         </button>
       );
   }
+}
+
+/** Narrow to just the write-query variant of Question. */
+type WriteQuery = Extract<Question, { kind: 'write-query' }>;
+
+/**
+ * The write-query answer card: an editor to compose the answer, graded against the reference on
+ * a pristine grading instance. "Check answer" runs the grade; correct → green + reveal; incorrect
+ * → a diff and the learner can edit and re-check. "Show answer" gives up and reveals the reference.
+ */
+function WriteQueryCard({
+  question,
+  lessonSetupSql,
+  revealed,
+  onOutcome,
+}: {
+  question: WriteQuery;
+  lessonSetupSql?: string;
+  revealed: boolean;
+  onOutcome: (correct: boolean | undefined) => void;
+}) {
+  const [sql, setSql] = useState('');
+  const [grading, setGrading] = useState(false);
+  const [result, setResult] = useState<GradeResult | null>(null);
+
+  // Boot the grading instance while the learner reads/types, so the first check isn't a ~4s wait.
+  useEffect(() => prewarmGradingDb(), []);
+
+  const check = useCallback(async () => {
+    if (!sql.trim() || grading) return;
+    setGrading(true);
+    const res = await grade({
+      referenceSql: question.referenceSql,
+      learnerSql: sql,
+      setupSql: question.setupSql ?? lessonSetupSql,
+      compare: question.compare,
+    });
+    setResult(res);
+    setGrading(false);
+    if (res.verdict === 'correct') onOutcome(true); // correct is terminal → reveal
+  }, [sql, grading, question, lessonSetupSql, onOutcome]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <QueryConsole initialSql="" onSqlChange={setSql} />
+
+      <div className="flex items-center gap-2">
+        {!revealed && (
+          <button
+            type="button"
+            disabled={!sql.trim() || grading}
+            onClick={check}
+            className="rounded bg-neutral-800 px-3 py-1 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {grading ? 'Checking…' : 'Check answer'}
+          </button>
+        )}
+        {!revealed && (
+          <button
+            type="button"
+            onClick={() => onOutcome(undefined)}
+            className="rounded border border-neutral-300 px-3 py-1 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Show answer
+          </button>
+        )}
+      </div>
+
+      {result && <GradeReport result={result} />}
+
+      {revealed && (
+        <pre className="overflow-x-auto rounded border border-neutral-200 bg-neutral-50 p-3 font-mono text-sm text-neutral-800">
+          <code>{question.referenceSql}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/** Render a grade verdict: correct banner, a rows/columns/order diff, or an error. */
+function GradeReport({ result }: { result: GradeResult }) {
+  if (result.verdict === 'correct') {
+    return (
+      <p className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800">
+        ✓ Correct — your result matches.
+      </p>
+    );
+  }
+  if (result.verdict === 'error') {
+    return <QueryError error={result.error} query={result.sql} />;
+  }
+  if (result.verdict === 'unavailable') {
+    return <p className="rounded border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-500">{result.message}</p>;
+  }
+
+  // incorrect: show the diff.
+  const { diff } = result;
+  return (
+    <div className="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+      <p className="font-medium text-amber-900">Not quite — your result differs.</p>
+      {diff.reason === 'columns' && (
+        <p className="font-mono text-xs text-amber-800">
+          Expected columns: {diff.expected.join(', ')} · got: {diff.actual.join(', ')}
+        </p>
+      )}
+      {diff.reason === 'row-order' && (
+        <p className="text-amber-800">Right rows, wrong order — check your ORDER BY.</p>
+      )}
+      {diff.reason === 'rows' && (
+        <div className="flex flex-col gap-2">
+          <p className="text-amber-800">
+            Expected {diff.expectedCount} row{diff.expectedCount === 1 ? '' : 's'}, got {diff.actualCount}.
+          </p>
+          {diff.missingTotal > 0 && (
+            <DiffRows label={`Missing from your result (${diff.missingTotal})`} rows={diff.missing} />
+          )}
+          {diff.extraTotal > 0 && (
+            <DiffRows label={`Shouldn't be in your result (${diff.extraTotal})`} rows={diff.extra} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A small grid of sample diff rows (column names inferred from the row objects). */
+function DiffRows({ label, rows }: { label: string; rows: Record<string, unknown>[] }) {
+  const columns = rows.length ? Object.keys(rows[0]) : [];
+  const fields = columns.map((name) => ({ name, dataTypeID: 0 }));
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-semibold text-amber-900">{label}</p>
+      <ResultGrid result={{ rows, fields }} />
+    </div>
+  );
 }
 
 /** A static grid for a predict-output expected result (its shape differs from ResultGrid's). */
