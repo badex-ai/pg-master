@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useLiveQuery } from '@electric-sql/pglite-react';
+import { useResetEpoch } from '@/lib/db/provider';
 import { ResultGrid, type QueryResult } from './ResultGrid';
 
 /**
@@ -36,11 +37,25 @@ const SAMPLE_LIMIT = 10;
  */
 export function SampleDataPanel() {
   const [table, setTable] = useState<SampleTable>('users');
+  const resetEpoch = useResetEpoch();
 
   // A live query: the panel reflects the active table's current rows and updates itself
-  // whenever the data changes (a learner's INSERT/UPDATE/DELETE, or a reset re-seed), so
-  // it never shows stale rows. The table name is from a fixed allowlist — safe to inline.
-  const live = useLiveQuery(`SELECT * FROM "${table}" ORDER BY 1 LIMIT ${SAMPLE_LIMIT}`);
+  // whenever the data changes (a learner's INSERT/UPDATE/DELETE), so it never shows stale
+  // rows. The table name is from a fixed allowlist — safe to inline.
+  //
+  // The `epoch` comment forces a fresh subscription after a reset. Reset does
+  // `DROP SCHEMA public CASCADE`, which silently kills a live subscription watching the
+  // dropped relation — it never fires again, even once the table is recreated. Changing
+  // the query text (the epoch bump) makes useLiveQuery unsubscribe the dead watcher and
+  // resubscribe against the new relation, so the panel tracks the re-seeded data.
+  //
+  // NOTE: useLiveQuery has no error channel — if this query ever fails (e.g. the table
+  // doesn't exist) the hook silently never resolves and the panel is stuck on "Loading…"
+  // with an unhandled rejection. Safe today only because `table` is from the fixed
+  // allowlist above; revisit if the tab list ever becomes dynamic.
+  const live = useLiveQuery(
+    `SELECT * FROM "${table}" ORDER BY 1 LIMIT ${SAMPLE_LIMIT} -- epoch:${resetEpoch}`,
+  );
   const result: QueryResult | null = live
     ? { rows: live.rows as Record<string, unknown>[], fields: live.fields }
     : null;
