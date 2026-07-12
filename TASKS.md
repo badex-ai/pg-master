@@ -118,9 +118,12 @@
       as `\x…` hex. Extracted the run state machine into `useQueryRunner` + added
       `initialSql`/`onRunComplete` props so Phase 3 can reuse the console without forking.
       All verified in-browser. Baseline tag moved to HEAD after these fixes.
-- [ ] **2.4** Always-visible sample-data panel: show the relevant table's 10 rows beside the
+- [x] **2.4** Always-visible sample-data panel: show the relevant table's 10 rows beside the
       editor (per [[DATASET.md]] "how the app should render this").
-      _Verify:_ the panel shows a table's rows and updates when the active table changes.
+      _Verify:_ in-browser (Playwright) — panel below the console shows the active table's 10
+      rows via the same ResultGrid; tabs for all 10 seeded tables; switching users→orders
+      updates columns+rows and renders NULL chips (guest order 105, NULL shipped_at);
+      refetches after a reset; console clean. Table name is a fixed allowlist (safe identifier).
       _Commit:_ `feat: add always-visible sample data panel`
 - [ ] **2.5** Render `EXPLAIN` / `EXPLAIN ANALYZE` output readably (plan tree, not raw text).
       _Verify:_ `EXPLAIN SELECT ...` shows a formatted plan.
