@@ -25,7 +25,11 @@ function nodeTarget(node: PlanNode): string | null {
 function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
   const target = nodeTarget(node);
   const condition = nodeCondition(node);
-  const hasActuals = node['Actual Total Time'] !== undefined;
+  // ANALYZE actuals: gate on Actual Rows, not time — `TIMING OFF` drops the time fields
+  // but still reports rows/loops (the estimate-vs-actual row drift is the core lesson).
+  const hasActuals = node['Actual Rows'] !== undefined;
+  const loops = node['Actual Loops'] ?? 1;
+  const perLoop = loops > 1; // ANALYZE reports per-loop averages when a node runs many times
 
   return (
     <li className="ml-0">
@@ -50,8 +54,11 @@ function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
           {node['Plan Rows'] !== undefined && <span>rows≈{node['Plan Rows']}</span>}
           {hasActuals && (
             <span className="text-emerald-700">
-              actual: {node['Actual Rows']} rows in {node['Actual Total Time']?.toFixed(3)} ms
-              {node['Actual Loops'] && node['Actual Loops'] > 1 ? ` ×${node['Actual Loops']}` : ''}
+              actual: {node['Actual Rows']} rows{perLoop ? '/loop' : ''}
+              {node['Actual Total Time'] !== undefined
+                ? ` in ${node['Actual Total Time'].toFixed(3)} ms${perLoop ? '/loop' : ''}`
+                : ''}
+              {perLoop ? ` × ${loops} loops` : ''}
             </span>
           )}
         </div>

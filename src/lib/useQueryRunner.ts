@@ -4,12 +4,21 @@ import { useCallback, useRef, useState } from 'react';
 import type { PGliteInterface } from '@electric-sql/pglite';
 import type { QueryResult } from '@/components/ResultGrid';
 import { toPgError, type PgError } from '@/lib/pgError';
+import { isExplain, toJsonExplain, parseExplainResult, type ExplainPlan } from '@/lib/explain';
 
-/** A failed run: the parsed Postgres error plus the query that produced it (for the caret). */
+/**
+ * A failed run: the parsed Postgres error and the query the LEARNER typed. For an EXPLAIN
+ * that ran as FORMAT JSON under the hood, the error position is mapped back onto the
+ * original text, so the caret points at the SQL on screen — not the rewritten query.
+ */
 export type RunFailure = { error: PgError; query: string };
 
-/** A successful run: the result of the LAST statement in the batch, and how long it took. */
-export type RunOutcome = { result: QueryResult; elapsedMs: number };
+/**
+ * A successful run: the last statement's result, elapsed time, the SQL the learner typed,
+ * and — when it was an EXPLAIN — the parsed plan tree. Lessons/graders consume this same
+ * shape, so the plan and the original SQL travel with the outcome, not a UI-only flag.
+ */
+export type RunOutcome = { result: QueryResult; elapsedMs: number; sql: string; plan: ExplainPlan | null };
 
 export type QueryRunner = {
   outcome: RunOutcome | null;
@@ -29,7 +38,8 @@ export type QueryRunner = {
  * would in psql — `db.query` rejects those with a protocol error. A generation counter
  * makes overlapping runs safe: only the latest run may write state, so a slow failing
  * run can never stomp a newer successful one (the editor's Cmd+Enter can start a run
- * while another is in flight).
+ * while another is in flight). EXPLAIN is handled here (not in the UI) so every caller —
+ * including a lesson driving runs directly — gets the plan and the original-SQL mapping.
  */
 export function useQueryRunner(db: PGliteInterface): QueryRunner {
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
@@ -48,27 +58,40 @@ export function useQueryRunner(db: PGliteInterface): QueryRunner {
     async (sql: string) => {
       const trimmed = sql.trim();
       if (!trimmed) return;
+      // For an EXPLAIN, run FORMAT JSON under the hood so we can render a plan tree; the
+      // plan is identical, only the serialization differs. `positionDelta` lets us map a
+      // Postgres error position back onto the SQL the learner typed.
+      const explaining = isExplain(trimmed);
+      const { sql: executed, positionDelta } = explaining
+        ? toJsonExplain(trimmed)
+        : { sql: trimmed, positionDelta: 0 };
+
       const gen = (generation.current += 1);
       setRunning(true);
       const start = performance.now();
       try {
-        const results = await db.exec(trimmed);
+        const results = await db.exec(executed);
         if (gen !== generation.current) return; // a newer run supersedes this one
         const elapsedMs = performance.now() - start;
         // The last statement's result is what the learner sees (mirrors psql).
         const last = results[results.length - 1];
+        const rows = (last?.rows ?? []) as Record<string, unknown>[];
         setOutcome({
-          result: {
-            rows: (last?.rows ?? []) as Record<string, unknown>[],
-            fields: last?.fields ?? [],
-            affectedRows: last?.affectedRows,
-          },
+          result: { rows, fields: last?.fields ?? [], affectedRows: last?.affectedRows },
           elapsedMs,
+          sql: trimmed,
+          plan: explaining ? parseExplainResult(rows) : null,
         });
         setFailure(null);
       } catch (e) {
         if (gen !== generation.current) return;
-        setFailure({ error: toPgError(e), query: trimmed });
+        const error = toPgError(e);
+        // The error position points into the executed (rewritten) text; shift it back so
+        // the caret lands on the learner's original SQL.
+        if (error.position !== undefined && positionDelta !== 0) {
+          error.position = Math.max(1, error.position - positionDelta);
+        }
+        setFailure({ error, query: trimmed });
         setOutcome(null);
       } finally {
         if (gen === generation.current) setRunning(false);

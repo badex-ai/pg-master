@@ -8,7 +8,6 @@ import { ResultGrid } from './ResultGrid';
 import { QueryError } from './QueryError';
 import { ExplainPlanView } from './ExplainPlan';
 import { useQueryRunner, type RunFailure, type RunOutcome } from '@/lib/useQueryRunner';
-import { isExplain, toJsonExplain, parseExplainResult } from '@/lib/explain';
 
 const DEFAULT_INITIAL_SQL = 'SELECT * FROM users;';
 
@@ -34,8 +33,6 @@ export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete }
   const [sql, setSql] = useState(initialSql);
   const [schema, setSchema] = useState<EditorSchema>(DEFAULT_SCHEMA);
   const [notice, setNotice] = useState<string | null>(null);
-  // Whether the last submitted query was an EXPLAIN — decides plan-tree vs grid rendering.
-  const [ranExplain, setRanExplain] = useState(false);
 
   const refreshSchema = useCallback(async () => {
     const res = await db.query<{ table_name: string; column_name: string }>(
@@ -54,11 +51,9 @@ export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete }
   const run = useCallback(
     async (query: string) => {
       setNotice(null);
-      // For an EXPLAIN, re-run it as FORMAT JSON so we can render a plan tree; the plan
-      // is identical, only the serialization differs. Non-EXPLAIN SQL runs verbatim.
-      const explaining = isExplain(query.trim());
-      setRanExplain(explaining);
-      await runner.run(explaining ? toJsonExplain(query.trim()) : query);
+      // The runner detects EXPLAIN, runs it as FORMAT JSON, and returns the plan on the
+      // outcome — no EXPLAIN logic lives here.
+      await runner.run(query);
       // A statement may have changed the schema; keep autocomplete current. Runs after
       // the user query settles, and never masks a query outcome (its own failure is
       // swallowed — a broken information_schema read is not the learner's error).
@@ -90,8 +85,8 @@ export function QueryConsole({ initialSql = DEFAULT_INITIAL_SQL, onRunComplete }
   }, [reset]);
 
   const { outcome, failure, running } = runner;
-  // When the last run was an EXPLAIN, its result is a JSON plan to render as a tree.
-  const plan = ranExplain && outcome ? parseExplainResult(outcome.result.rows) : null;
+  // An EXPLAIN outcome carries its parsed plan; render it as a tree instead of a grid.
+  const plan = outcome?.plan ?? null;
 
   return (
     <div className="flex flex-col gap-3">
