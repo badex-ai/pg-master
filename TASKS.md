@@ -138,12 +138,17 @@
 
 ## Phase 3 — Lesson & quiz engine
 
-- [ ] **3.1** Define the lesson content schema (TS types): a lesson has teach content, a
+- [x] **3.1** Define the lesson content schema (TS types): a lesson has teach content, a
       dataset context, questions (typed per the taxonomy in [[CURRICULUM.md]]), and reveals.
-      _Verify:_ types compile; one sample lesson object validates.
-      _Note (from deep review):_ resolve the grading-isolation decision (see decisions log)
-      BEFORE finalizing these types — the schema must be able to express whether a lesson
-      assumes pristine DB state, which depends on that decision.
+      _Verify:_ `npx tsc --noEmit` passes; the sample lesson (`content/lessons/tier1-select.ts`,
+      unit 1.1, a write-query + a multiple-choice trap) type-checks; a node:test (transpile-with-
+      tsc, zero deps) asserts it validates structurally (35 tests green). Also proved the
+      Question union narrows per `kind` and is exhaustively checkable (a missing case is a
+      `never` compile error) — the property 3.4's grader relies on.
+      _Design:_ spec-first via interview → `SPEC.md`. Questions = closed discriminated union of
+      the 11 taxonomy kinds; content authored as typed TS object modules; DB context = optional
+      `setupSql` on the reseeded grading instance (per the grading-isolation decision — no
+      pristine flag needed); write-query comparison configurable per question (`compare.orderMatters`).
       _Commit:_ `feat: define lesson and question content model`
 - [ ] **3.2** Lesson view: render teach content (markdown) + worked example + the live editor
       pre-loaded with the example.
