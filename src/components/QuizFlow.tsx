@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Question, Reveal, ExpectedResult } from '@/lib/content/types';
 import { grade, type GradeResult } from '@/lib/grading/grade';
 import { prewarmGradingDb } from '@/lib/grading/instance';
+import { markComplete } from '@/lib/progress';
 import { TeachContent } from './TeachContent';
 import { QueryConsole } from './QueryConsole';
 import { ResultGrid } from './ResultGrid';
@@ -26,15 +27,25 @@ import { QueryError } from './QueryError';
 type QuestionState = { status: 'unanswered' | 'revealed'; selectedIndex?: number; correct?: boolean };
 
 export function QuizFlow({
+  unit,
   questions,
   lessonSetupSql,
 }: {
+  unit: string;
   questions: Question[];
   lessonSetupSql?: string;
 }) {
   const [state, setState] = useState<Record<string, QuestionState>>({});
 
   const setQ = (id: string, next: QuestionState) => setState((s) => ({ ...s, [id]: next }));
+
+  // The lesson is complete once every question has been revealed (answered or shown). This is the
+  // only completion signal; it's recorded in localStorage so the nav tick and count survive reload.
+  // An empty quiz is never "complete" (nothing to reveal), so `every` over [] must not count.
+  const allRevealed = questions.length > 0 && questions.every((q) => state[q.id]?.status === 'revealed');
+  useEffect(() => {
+    if (allRevealed) markComplete(unit);
+  }, [allRevealed, unit]);
 
   if (questions.length === 0) return null;
 
@@ -51,6 +62,11 @@ export function QuizFlow({
           onChange={(next) => setQ(q.id, next)}
         />
       ))}
+      {allRevealed && (
+        <p className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+          ✓ Lesson complete — every question answered. Your progress is saved.
+        </p>
+      )}
     </section>
   );
 }

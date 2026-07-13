@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CURRICULUM, unitToSlug, type TierOutline } from '@/lib/content/curriculum';
 import { isBuilt } from '@/lib/content/index';
+import { useCompletedUnits } from '@/lib/useProgress';
 
 /**
  * The curriculum sidebar: the full tier/unit path, design track first. Built units link to their
@@ -17,6 +18,7 @@ import { isBuilt } from '@/lib/content/index';
 export function CurriculumNav() {
   const pathname = usePathname();
   const activeSlug = pathname.startsWith('/lesson/') ? pathname.slice('/lesson/'.length) : null;
+  const completed = new Set(useCompletedUnits());
 
   return (
     <nav className="w-64 shrink-0 overflow-y-auto border-r border-neutral-200 bg-neutral-50 p-4 text-sm">
@@ -25,14 +27,22 @@ export function CurriculumNav() {
       </Link>
       <div className="flex flex-col gap-3">
         {CURRICULUM.map((tier) => (
-          <TierSection key={String(tier.tier)} tier={tier} activeSlug={activeSlug} />
+          <TierSection key={String(tier.tier)} tier={tier} activeSlug={activeSlug} completed={completed} />
         ))}
       </div>
     </nav>
   );
 }
 
-function TierSection({ tier, activeSlug }: { tier: TierOutline; activeSlug: string | null }) {
+function TierSection({
+  tier,
+  activeSlug,
+  completed,
+}: {
+  tier: TierOutline;
+  activeSlug: string | null;
+  completed: Set<string>;
+}) {
   // A tier starts expanded if it contains the active lesson; otherwise collapsed.
   const containsActive = tier.units.some((u) => unitToSlug(u.unit) === activeSlug);
   const [open, setOpen] = useState(containsActive);
@@ -61,15 +71,24 @@ function TierSection({ tier, activeSlug }: { tier: TierOutline; activeSlug: stri
                 </li>
               );
             }
+            const done = completed.has(u.unit);
             return (
               <li key={u.unit}>
                 <Link
                   href={`/lesson/${slug}`}
-                  className={`block rounded px-2 py-0.5 ${
+                  className={`flex items-center justify-between gap-2 rounded px-2 py-0.5 ${
                     active ? 'bg-neutral-800 text-white' : 'text-neutral-700 hover:bg-neutral-200'
                   }`}
                 >
-                  {u.title}
+                  <span>{u.title}</span>
+                  {done && (
+                    <span
+                      aria-label="completed"
+                      className={active ? 'text-emerald-300' : 'text-emerald-600'}
+                    >
+                      ✓
+                    </span>
+                  )}
                 </Link>
               </li>
             );

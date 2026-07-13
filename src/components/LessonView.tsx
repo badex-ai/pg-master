@@ -31,7 +31,7 @@ export function LessonView({ lesson }: { lesson: Lesson }) {
         <QueryConsole initialSql={lesson.exampleSql ?? 'SELECT 1;'} />
       </section>
 
-      <QuizFlow questions={lesson.questions} lessonSetupSql={lesson.setupSql} />
+      <QuizFlow unit={lesson.unit} questions={lesson.questions} lessonSetupSql={lesson.setupSql} />
     </article>
   );
 }

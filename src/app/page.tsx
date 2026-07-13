@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { CURRICULUM, ALL_UNITS, unitToSlug } from '@/lib/content/curriculum';
 import { isBuilt } from '@/lib/content/index';
+import { ProgressSummary } from '@/components/ProgressSummary';
 
 /** The first built lesson in curriculum order, if any — the landing "Start" target. */
 function firstBuiltUnit(): string | null {
@@ -25,6 +26,8 @@ export default function Home() {
         The path runs design-first, then Tier 0 → 5: {totalUnits} units in all. Pick any unit from
         the sidebar, or start at the beginning.
       </p>
+
+      <ProgressSummary />
 
       {start ? (
         <Link

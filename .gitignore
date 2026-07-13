@@ -35,3 +35,7 @@ coverage/
 # Scratch
 /tmp/
 scratch/
+.playwright-mcp/
+
+# Local agent config
+.claude/
