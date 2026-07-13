@@ -17,11 +17,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..'); // repo root
+const require = createRequire(import.meta.url);
 
 let outDir;
 let lesson; // the transpiled sample
@@ -44,23 +46,27 @@ const KINDS = new Set([
 before(() => {
   outDir = mkdtempSync(join(tmpdir(), 'content-test-'));
   const cfg = join(outDir, 'tsconfig.json');
-  const types = join(ROOT, 'src', 'lib', 'content', 'types.ts');
-  const sample = join(ROOT, 'src', 'lib', 'content', 'lessons', 'tier1-select.ts');
+  const c = (...p) => join(ROOT, 'src', 'lib', 'content', ...p);
   writeFileSync(
     cfg,
     JSON.stringify({
       compilerOptions: {
         outDir,
         rootDir: join(ROOT, 'src'),
-        module: 'esnext',
+        // CommonJS so `require` resolves the registry's extensionless relative imports
+        // (index.ts → ./lessons/tier1-select); ESM output would need rewritten specifiers.
+        module: 'commonjs',
         target: 'es2022',
-        moduleResolution: 'bundler',
+        moduleResolution: 'node',
+        esModuleInterop: true,
         strict: true,
         baseUrl: ROOT,
         paths: { '@/*': ['./src/*'] },
         skipLibCheck: true,
       },
-      files: [types, sample],
+      // The registry (index.ts) pulls in types + the sample lesson transitively; curriculum is
+      // standalone. Compiling these proves the whole content layer type-checks together.
+      files: [c('types.ts'), c('lessons', 'tier1-select.ts'), c('curriculum.ts'), c('index.ts')],
     }),
   );
   // Fails the test if the sample doesn't type-check against the model.
@@ -73,11 +79,12 @@ process.on('exit', () => {
 
 async function load() {
   if (!lesson) {
-    const url = pathToFileURL(join(outDir, 'lib', 'content', 'lessons', 'tier1-select.js')).href;
-    ({ tier1Select: lesson } = await import(url));
+    ({ tier1Select: lesson } = require(join(outDir, 'lib', 'content', 'lessons', 'tier1-select.js')));
   }
   return lesson;
 }
+
+const mod = async (name) => require(join(outDir, 'lib', 'content', `${name}.js`));
 
 test('the sample lesson has the required top-level shape', async () => {
   const l = await load();
@@ -125,5 +132,30 @@ test('every write-query reference is a non-mutating SELECT (grading invariant)',
   for (const q of l.questions.filter((q) => q.kind === 'write-query')) {
     assert.match(q.referenceSql, /select/i, `${q.id}: referenceSql must SELECT`);
     assert.doesNotMatch(q.referenceSql, mutating, `${q.id}: referenceSql must not mutate`);
+  }
+});
+
+test('curriculum outline has no duplicate units', async () => {
+  const { ALL_UNITS } = await mod('curriculum');
+  assert.equal(new Set(ALL_UNITS).size, ALL_UNITS.length, 'duplicate unit id in the outline');
+});
+
+test('every unit id round-trips through the slug encoding', async () => {
+  // The nav/route encode unit → slug (dots → dashes) and back. If any unit id ever contains a
+  // dash, that round-trip breaks and produces a dead link — assert it never does, for every unit.
+  const { ALL_UNITS, unitToSlug, slugToUnit } = await mod('curriculum');
+  for (const u of ALL_UNITS) {
+    assert.equal(slugToUnit(unitToSlug(u)), u, `slug round-trip broken for "${u}"`);
+  }
+});
+
+test('every authored lesson maps to a real outline unit, tier-consistent', async () => {
+  const { lessons } = await mod('index');
+  const { CURRICULUM } = await mod('curriculum');
+  const tierByUnit = new Map();
+  for (const t of CURRICULUM) for (const u of t.units) tierByUnit.set(u.unit, t.tier);
+  for (const lesson of lessons) {
+    assert.ok(tierByUnit.has(lesson.unit), `lesson unit "${lesson.unit}" is not in the outline`);
+    assert.equal(tierByUnit.get(lesson.unit), lesson.tier, `lesson "${lesson.unit}" tier mismatch`);
   }
 });

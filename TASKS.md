@@ -201,9 +201,23 @@
 
 ## Phase 4 — Navigation, progress, content authoring
 
-- [ ] **4.1** Curriculum navigation: tiers → units from [[CURRICULUM.md]] and [[DESIGN.md]]
+- [x] **4.1** Curriculum navigation: tiers → units from [[CURRICULUM.md]] and [[DESIGN.md]]
       (design taught first), with lesson list.
-      _Verify:_ can navigate the tier/unit tree to a lesson.
+      _Verify:_ in-browser (Playwright) — sidebar shows the full 70-unit tree, Database Design
+      first then Tier 0→5; expanding Tier 1 shows 1.1 as a link and the rest as muted "soon";
+      clicking 1.1 → `/lesson/1-1` renders the lesson with a working console and highlights the
+      active nav item; landing "/" offers "Start learning →" to the first built unit. No-remount
+      check passed: DELETE reviews, client-nav lesson→home→lesson via <Link>, reviews still empty
+      (single PGlite instance survived route changes). Typecheck clean, 52 tests green, console clean.
+      _Design:_ hand-authored `curriculum.ts` outline (ordering
+      authority) + `content/index.ts` registry (unit→Lesson, built-state derived, throws on dup).
+      Real routes `/lesson/[slug]` (slug = unit with `.`→`-`, since a dot in a path segment breaks
+      static-host clean URLs — matters for 5.2 static export). Nav in the root layout OUTSIDE the
+      DB provider so it renders during the "Starting Postgres" splash and never remounts. New
+      content tests: no dup units, slug round-trips for all 70 units, lesson↔outline tier
+      consistency. Deferred: progress ticks → 4.2; real lesson content → 4.3/4.4; responsive → 5.1.
+      _Note:_ navigating away discards quiz/editor component state but the shared DB keeps
+      mutations — intended; 4.2 persists completion in localStorage, outside component state.
       _Commit:_ `feat: add curriculum navigation with design-first ordering`
 - [ ] **4.2** Progress tracking (localStorage): mark lessons/quizzes complete, show progress.
       _Verify:_ completing a lesson persists across reload.
