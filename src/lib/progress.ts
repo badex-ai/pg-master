@@ -100,18 +100,6 @@ export function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** The stable snapshot for `useSyncExternalStore`. */
-function getSnapshot(): readonly string[] {
-  ensureLoaded();
-  return snapshot;
-}
-
-/** SSR snapshot: nothing is complete on the server (localStorage is client-only). */
-function getServerSnapshot(): readonly string[] {
-  return EMPTY;
-}
-const EMPTY: readonly string[] = [];
-
 /**
  * Test-only: reset in-memory state so a fresh localStorage stub is re-read. Not used by the app.
  * @internal
