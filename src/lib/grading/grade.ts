@@ -18,7 +18,22 @@ export type GradeResult =
   | { verdict: 'correct' }
   | { verdict: 'incorrect'; diff: Exclude<CompareResult, { equal: true }> }
   | { verdict: 'error'; error: PgError; sql: string }
+  | { verdict: 'ambiguous-columns'; duplicate: string }
   | { verdict: 'unavailable'; message: string };
+
+/**
+ * The first output column name that appears more than once, or null. Duplicate names (e.g. an
+ * unaliased `SELECT o.id, u.id FROM …`) collapse to one key in PGlite's object-shaped rows, so a
+ * value is silently lost before comparison. We detect it up front instead of grading corrupt rows.
+ */
+function firstDuplicateColumn(fields: { name: string }[]): string | null {
+  const seen = new Set<string>();
+  for (const f of fields) {
+    if (seen.has(f.name)) return f.name;
+    seen.add(f.name);
+  }
+  return null;
+}
 
 export type GradeInput = {
   referenceSql: string;
@@ -65,12 +80,27 @@ async function gradeOnce(input: GradeInput): Promise<GradeResult> {
   if (ref.result.fields.length === 0) {
     return { verdict: 'unavailable', message: 'Reference query returned no columns (must be a SELECT).' };
   }
+  // A duplicate name in the reference is a content bug: object-shaped rows collapse it, so we
+  // can't compare honestly. Fail closed as unavailable rather than grade against corrupt rows.
+  const refDup = firstDuplicateColumn(ref.result.fields);
+  if (refDup !== null) {
+    return {
+      verdict: 'unavailable',
+      message: `Reference query has two columns named "${refDup}"; alias them with AS so each output name is unique.`,
+    };
+  }
 
   // Learner runs second. A mutating learner answer only affects state after both its own result
   // and the oracle are fixed; the next grade reseeds anyway.
   const learner = await executeSql(db, input.learnerSql);
   if (!learner.ok) {
     return { verdict: 'error', error: learner.error, sql: learner.sql };
+  }
+  // A duplicate name in the learner's output collapses a value before comparison, which would
+  // mis-grade. It's the learner's to fix (add AS), so tell them rather than judging corrupt rows.
+  const learnerDup = firstDuplicateColumn(learner.result.fields);
+  if (learnerDup !== null) {
+    return { verdict: 'ambiguous-columns', duplicate: learnerDup };
   }
 
   const cmp = compareResults(ref.result, learner.result, input.compare);

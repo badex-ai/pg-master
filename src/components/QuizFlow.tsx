@@ -42,6 +42,8 @@ export function QuizFlow({
   // The lesson is complete once every question has been revealed (answered or shown). This is the
   // only completion signal; it's recorded in localStorage so the nav tick and count survive reload.
   // An empty quiz is never "complete" (nothing to reveal), so `every` over [] must not count.
+  // Reveal is terminal — a question never returns to 'unanswered' — so this only ever goes
+  // false→true. A future "retry quiz" affordance would need an unmarkComplete path to stay honest.
   const allRevealed = questions.length > 0 && questions.every((q) => state[q.id]?.status === 'revealed');
   useEffect(() => {
     if (allRevealed) markComplete(unit);
@@ -302,6 +304,14 @@ function GradeReport({ result }: { result: GradeResult }) {
   }
   if (result.verdict === 'unavailable') {
     return <p className="rounded border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-500">{result.message}</p>;
+  }
+  if (result.verdict === 'ambiguous-columns') {
+    return (
+      <p className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-900">
+        Two output columns are both named <code className="font-mono">{result.duplicate}</code> — give each a
+        distinct name with <code className="font-mono">AS</code> so the result is unambiguous.
+      </p>
+    );
   }
 
   // incorrect: show the diff.
