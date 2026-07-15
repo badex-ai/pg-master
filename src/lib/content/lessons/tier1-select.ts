@@ -39,6 +39,8 @@ literals are all valid outputs, not just bare columns.`,
       referenceSql: `SELECT email, city FROM users WHERE status = 'active'`,
       // Default comparison (unordered set, names must match) is exactly right here.
       themes: ['set-based-thinking'],
+      // A question whose oracle returns nothing would "pass" for a learner who selects nothing.
+      verify: [{ sql: `SELECT (count(*) > 0)::text FROM users WHERE status = 'active'`, equals: 'true' }],
       reveal: {
         correct: `SELECT email, city FROM users WHERE status = 'active';`,
         why:
@@ -55,8 +57,15 @@ literals are all valid outputs, not just bare columns.`,
         'The `users` table has 10 rows, one of which (id 4) has a NULL `full_name`. ' +
         'What does `SELECT COUNT(full_name) FROM users;` return?',
       choices: ['10', '9', '1', 'NULL'],
-      answerIndex: 1, // 9 — verified against the seed
+      answerIndex: 1,
       themes: ['null-correctness'],
+      // The prompt states the row count and which id is NULL; the answer is the difference.
+      verify: [
+        { sql: `SELECT count(*)::text FROM users`, equals: '10' },
+        { sql: `SELECT count(*)::text FROM users WHERE full_name IS NULL`, equals: '1' },
+        { sql: `SELECT id::text FROM users WHERE full_name IS NULL`, equals: '4' },
+        { sql: `SELECT count(full_name)::text FROM users`, equals: '9' },
+      ],
       reveal: {
         correct: '9',
         why:
@@ -78,9 +87,14 @@ literals are all valid outputs, not just bare columns.`,
         'One user (id 4) has a NULL `full_name`. What rows does this return?\n\n' +
         '```sql\nSELECT id FROM users WHERE full_name = NULL;\n```',
       sql: `SELECT id FROM users WHERE full_name = NULL`,
-      // Verified against the seed: zero rows — `= NULL` is never true.
       expected: { columns: ['id'], rows: [] },
       themes: ['null-correctness', 'logical-eval-order'],
+      // Zero rows is a NULL semantic, true of any seed. That id 4 is the NULL row is not — and the
+      // reveal promises `IS NULL` returns it, so the lesson breaks if the seed moves the NULL.
+      verify: [
+        { sql: `SELECT id::text FROM users WHERE full_name IS NULL`, equals: '4' },
+        { sql: `SELECT count(*)::text FROM users WHERE full_name = NULL`, equals: '0' },
+      ],
       reveal: {
         correct: 'Zero rows.',
         why:
