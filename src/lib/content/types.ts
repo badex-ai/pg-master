@@ -52,11 +52,20 @@ export type Reveal = {
  *
  * Author rule: every number, id, or row-fact stated in a prompt, choice or reveal gets an entry.
  * Cast to text in the SQL (`count(*)::text`) so the expectation is an unambiguous string.
+ *
+ * Two traps the comparison cannot express for you:
+ *  - **NULL is not assertable** via `equals` — a NULL result is compared as JS `null` and matches
+ *    no string, `'null'` included. Phrase the fact as a boolean or a count instead
+ *    (`(x IS NULL)::text` → `'true'`, or `count(*) FILTER (WHERE x IS NULL)::text`).
+ *  - **Values are stringified naively**, unlike the grading comparator's type-aware canonicalizer.
+ *    A bare jsonb or timestamptz column will not render how you expect. Assert through an
+ *    explicit cast or an expression that yields a stable scalar. The test session is pinned to
+ *    UTC, so `timestamptz::text` is deterministic — but it still prints an offset (`+00`).
  */
 export type SeedFact = {
   /** Single-row, single-column SELECT re-deriving the claimed fact from the seed. */
   sql: string;
-  /** The expected value, as text. */
+  /** The expected value, as text. Cannot express NULL — assert a boolean or count instead. */
   equals: string;
 };
 

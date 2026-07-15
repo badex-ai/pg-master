@@ -102,6 +102,11 @@ after(async () => {
 /** Reseed to pristine, then apply the question/lesson setup — mirrors gradeOnce's preamble. */
 async function reseed(setupSql) {
   await db.exec('DISCARD ALL');
+  // PGlite inherits the host timezone at boot (Etc/GMT-1 here, not UTC), and DISCARD ALL resets
+  // TimeZone to that default — so this pin must live here, not in before(). Without it, any
+  // timestamptz fact rendered with ::text carries the host's offset and the suite passes or fails
+  // by machine. DATASET.md documents its sample rows in UTC; this makes that true at runtime.
+  await db.exec("SET TIME ZONE 'UTC'");
   await resetDatabase(db);
   if (setupSql && setupSql.trim()) await db.exec(setupSql);
 }
