@@ -9,8 +9,10 @@
  * proves the guard on the same code the app runs, not a reimplementation. CommonJS transpile so the
  * relative imports (grade → ./compare, instance → ../db/seed) resolve; PGlite loads via the app code.
  * Under classic `node` resolution tsc can't type-resolve PGlite's `contrib/*` subpath exports (the
- * project build uses `bundler` and passes), so we emit with noEmitOnError:false and assert the JS
- * was produced rather than trusting tsc's exit code — the emitted require() calls are correct.
+ * project build uses `bundler` and passes), so the transpile step emits with noEmitOnError:false and
+ * cannot use its exit code as a signal. Type errors are caught by gating on the project's own
+ * `tsc --noEmit` first — without that gate a real type error here is indistinguishable from the
+ * known contrib warning, and the tests would run green against code that doesn't type-check.
  *
  * Run: node --test src/lib/grading/grade.test.mjs   (slow: boots WASM + seeds)
  */
@@ -30,6 +32,12 @@ let outDir;
 let grade;
 
 before(() => {
+  // Type-check gate. The transpile below runs with noEmitOnError:false and must swallow tsc's
+  // exit code (the contrib/* subpath warning is unavoidable under `node` resolution), which would
+  // also swallow a genuine type error in grade.ts. The project's own check uses `bundler`
+  // resolution, has no such warning, and fails loudly — so run it first and let it be the signal.
+  execFileSync(join(ROOT, 'node_modules', '.bin', 'tsc'), ['--noEmit'], { cwd: ROOT, stdio: 'pipe' });
+
   // Emit inside the repo (not the OS tmpdir) so the transpiled instance.js can `require`
   // '@electric-sql/pglite' — CommonJS resolves modules by walking up from the file's own dir.
   outDir = mkdtempSync(join(ROOT, '.grade-test-'));
@@ -53,12 +61,12 @@ before(() => {
       files: [join(ROOT, 'src', 'lib', 'grading', 'grade.ts')],
     }),
   );
-  // tsc exits non-zero on the contrib type-resolution warning but still emits correct JS; only
-  // fail the test if the output is actually missing.
+  // Exits non-zero on the contrib type-resolution warning but still emits correct JS. Type errors
+  // are already ruled out by the --noEmit gate above, so the exit code carries no signal here.
   try {
     execFileSync(join(ROOT, 'node_modules', '.bin', 'tsc'), ['--project', cfg], { stdio: 'pipe' });
   } catch {
-    // tolerated — verified by the existsSync check below
+    // expected: contrib/* subpath resolution under `node` moduleResolution
   }
   const emitted = join(outDir, 'lib', 'grading', 'grade.js');
   assert.ok(existsSync(emitted), 'tsc did not emit grade.js');
