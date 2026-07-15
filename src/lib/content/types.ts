@@ -41,6 +41,25 @@ export type Reveal = {
   reproduceSql?: string;
 };
 
+/**
+ * A seed fact a question's prose or answer depends on, checked against the live database.
+ *
+ * Prompts, choices and reveals make claims about the seeded data ("users has 10 rows, one with a
+ * NULL full_name"; a multiple-choice answer of '9'). Those claims are unverifiable by the runtime
+ * test on their own — a static test can only pin what the author wrote, not whether it is true —
+ * so a seed change silently turns a correct answer into a wrong one. Each entry re-derives the
+ * fact from the database: `sql` must return exactly one row and one column equal to `equals`.
+ *
+ * Author rule: every number, id, or row-fact stated in a prompt, choice or reveal gets an entry.
+ * Cast to text in the SQL (`count(*)::text`) so the expectation is an unambiguous string.
+ */
+export type SeedFact = {
+  /** Single-row, single-column SELECT re-deriving the claimed fact from the seed. */
+  sql: string;
+  /** The expected value, as text. */
+  equals: string;
+};
+
 /** Fields common to every question, regardless of kind. */
 export type QuestionBase = {
   /** Stable id, unique within a lesson (e.g. 'q1'). */
@@ -51,6 +70,8 @@ export type QuestionBase = {
   themes?: Theme[];
   /** Minimum PG major version for the feature under test (e.g. 15, 17, 18). Awareness/gate. */
   minPgVersion?: number;
+  /** Seed facts this question's prose or answer depends on. Checked against a live reseed. */
+  verify?: SeedFact[];
   /** The post-answer reveal. */
   reveal: Reveal;
 };

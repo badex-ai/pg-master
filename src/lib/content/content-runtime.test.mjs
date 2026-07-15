@@ -140,6 +140,29 @@ test('at least one lesson is authored', () => {
   assert.ok(lessons.length >= 1, 'no lessons to verify');
 });
 
+test('authored seed facts still hold against the live seed', async () => {
+  // The claims in prompts, choices and reveals are the class that already shipped a wrong answer:
+  // static tests pin what the author wrote, not whether it is true of the database. Re-derive each
+  // declared fact from a live reseed, so a seed change fails here instead of misleading a learner.
+  for (const { lesson, q } of allQuestions()) {
+    if (!q.verify?.length) continue;
+    await reseed(q.setupSql ?? lesson.setupSql);
+    for (const [n, fact] of q.verify.entries()) {
+      const label = `${lesson.unit}/${q.id} verify[${n}]`;
+      const res = await executeSql(db, fact.sql);
+      assert.ok(res.ok, `${label}: sql failed: ${res.ok ? '' : res.error.message}`);
+      assert.equal(res.result.rows.length, 1, `${label}: must return exactly one row`);
+      assert.equal(res.result.fields.length, 1, `${label}: must return exactly one column`);
+      const actual = res.result.rows[0][res.result.fields[0].name];
+      assert.equal(
+        actual === null ? null : String(actual),
+        fact.equals,
+        `${label}: seed no longer matches the authored claim`,
+      );
+    }
+  }
+});
+
 test('write-query references run, return unique-named columns, and are order-deterministic', async () => {
   for (const { lesson, q } of allQuestions()) {
     if (q.kind !== 'write-query') continue;
@@ -192,6 +215,30 @@ test('choose-index / read-plan queries run against the seed', async () => {
     await reseed(lesson.setupSql);
     const res = await executeSql(db, q.sql);
     assert.ok(res.ok, `${label}: query failed: ${res.ok ? '' : res.error.message}`);
+  }
+});
+
+test('lesson exampleSql runs against the seed', async () => {
+  // exampleSql is preloaded into the live editor (LessonView), so a broken one greets the learner
+  // with an error on arrival.
+  for (const lesson of lessons) {
+    if (!lesson.exampleSql?.trim()) continue;
+    await reseed(lesson.setupSql);
+    const res = await executeSql(db, lesson.exampleSql);
+    assert.ok(res.ok, `${lesson.unit}: exampleSql failed: ${res.ok ? '' : res.error.message}`);
+  }
+});
+
+test('reveal.reproduceSql runs against the seed', async () => {
+  // reproduceSql is offered as "paste this to see it yourself" — except for predict-error
+  // questions, whose reveal legitimately reproduces the error.
+  for (const { lesson, q } of allQuestions()) {
+    const sql = q.reveal?.reproduceSql;
+    if (!sql?.trim()) continue;
+    if (q.kind === 'predict-error' && q.runs === false) continue;
+    await reseed(q.setupSql ?? lesson.setupSql);
+    const res = await executeSql(db, sql);
+    assert.ok(res.ok, `${lesson.unit}/${q.id}: reproduceSql failed: ${res.ok ? '' : res.error.message}`);
   }
 });
 
