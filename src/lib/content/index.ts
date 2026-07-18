@@ -9,9 +9,18 @@
 import type { Lesson } from './types';
 import { tier1Select } from './lessons/tier1-select';
 import { tier1Where } from './lessons/tier1-where';
+import { tier1OrderLimit } from './lessons/tier1-order-limit';
+import { tier1Aggregation } from './lessons/tier1-aggregation';
+import { tier1Joins } from './lessons/tier1-joins';
 
 /** All authored lessons. Order here doesn't matter — the curriculum outline owns ordering. */
-export const lessons: readonly Lesson[] = [tier1Select, tier1Where];
+export const lessons: readonly Lesson[] = [
+  tier1Select,
+  tier1Where,
+  tier1OrderLimit,
+  tier1Aggregation,
+  tier1Joins,
+];
 
 /** unit id → Lesson. Throws at module load on a duplicate unit (an authoring mistake). */
 export const lessonsByUnit: ReadonlyMap<string, Lesson> = (() => {
