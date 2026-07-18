@@ -8,9 +8,10 @@
 
 import type { Lesson } from './types';
 import { tier1Select } from './lessons/tier1-select';
+import { tier1Where } from './lessons/tier1-where';
 
 /** All authored lessons. Order here doesn't matter — the curriculum outline owns ordering. */
-export const lessons: readonly Lesson[] = [tier1Select];
+export const lessons: readonly Lesson[] = [tier1Select, tier1Where];
 
 /** unit id → Lesson. Throws at module load on a duplicate unit (an authoring mistake). */
 export const lessonsByUnit: ReadonlyMap<string, Lesson> = (() => {
