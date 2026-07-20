@@ -245,8 +245,8 @@ categories ──(self-ref parent_id)──┐
 | 10 | 107      | 6          | 1        | 59.50      |
 
 **Why these rows exist:**
-- **Order 101 has 2 items** (rows 1, 2) and (see `shipments`) **2 shipments** → join both to
-  `orders` in one flat query and `SUM(orders.total)` is counted `2 × 2 = 4` times — the
+- **Order 101 has 2 items** (rows 1, 2) and (see `shipments`) **3 shipments** → join both to
+  `orders` in one flat query and `SUM(orders.total)` is counted `2 × 3 = 6` times — the
   **fan-out / cardinality-inflation** lesson ([[MASTERY-INSIGHTS.md]] 4.1). This is the
   centerpiece of the "revenue reads 10× too high" demo.
 - **`unit_price` ≠ current `products.price`** in places (row 5: bought product 6 at 59.00,
