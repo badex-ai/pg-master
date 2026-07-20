@@ -217,10 +217,8 @@ ORDER BY o.id, p.id;`,
           'it at one, and here that comes free because `product_id` is the primary key rather than ' +
           'a surrogate `id`. Reusing the FK column as the PK is the standard way to express 1:1, ' +
           'and it is worth noticing what it still does not enforce: a product with *no* inventory ' +
-          'row is entirely legal, so this is strictly "zero or one", not "exactly one". Try it ' +
-          'yourself — `INSERT INTO inventory (product_id, stock, reorder_level, updated_at) ' +
-          'VALUES (1, 999, 10, now());` is rejected with SQLSTATE 23505 (unique_violation), ' +
-          'because product 1 already has a row.',
+          'row is entirely legal, so this is strictly "zero or one", not "exactly one". The next ' +
+          'question puts that enforcement to the test.',
         distractors: [
           'A foreign key constrains the referencing value to exist; it places no limit on how many rows reference the same parent. Without the PK, ten inventory rows could point at one product.',
           'Equal row counts are a property of today\'s data, not a constraint. Nothing would stop an eleventh inventory row being inserted tomorrow.',
@@ -234,6 +232,39 @@ ORDER BY o.id, p.id;`,
           `LEFT JOIN inventory i ON i.product_id = p.id\n` +
           `GROUP BY p.id, p.name\n` +
           `ORDER BY p.id;`,
+      },
+    },
+    {
+      id: 'q5',
+      kind: 'predict-error',
+      prompt:
+        'Product 1 already has an inventory row. Does this second one succeed? If not, which error ' +
+        'does the database raise?\n\n' +
+        '```sql\nINSERT INTO inventory (product_id, stock, reorder_level, updated_at)\n' +
+        'VALUES (1, 999, 10, now());\n```',
+      sql: `INSERT INTO inventory (product_id, stock, reorder_level, updated_at) VALUES (1, 999, 10, now())`,
+      runs: false,
+      // The PRIMARY KEY on product_id rejects the duplicate: 23505 unique_violation.
+      sqlState: '23505',
+      themes: ['set-based-thinking'],
+      verify: [
+        { sql: `SELECT count(*)::text FROM inventory WHERE product_id = 1`, equals: '1' },
+      ],
+      reveal: {
+        correct:
+          'It fails with SQLSTATE 23505 (unique_violation) — the primary key already holds a row ' +
+          'for product 1.',
+        why:
+          'This is the previous question\'s answer made observable. A PRIMARY KEY is a UNIQUE ' +
+          'index plus NOT NULL, so the second row for product 1 is refused at write time by the ' +
+          'database itself — not by application code that a future caller might forget to run. ' +
+          'That refusal *is* the one-to-one guarantee: without it the column would accept any ' +
+          'number of inventory rows per product and the relationship would silently be 1:N. Note ' +
+          'the error arrives on INSERT, not on read — a constraint converts a class of bad data ' +
+          'into a loud, immediate failure at the moment someone tries to create it.',
+        reproduceSql:
+          `-- The row that is already there, and why the INSERT above has nowhere to go.\n` +
+          `SELECT product_id, stock, reorder_level FROM inventory WHERE product_id = 1;`,
       },
     },
   ],
