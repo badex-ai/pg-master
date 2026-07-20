@@ -7,6 +7,9 @@
  */
 
 import type { Lesson } from './types';
+import { designAccessPatterns } from './lessons/design-access-patterns';
+import { designEntities } from './lessons/design-entities';
+import { designRelationships } from './lessons/design-relationships';
 import { tier1Select } from './lessons/tier1-select';
 import { tier1Where } from './lessons/tier1-where';
 import { tier1OrderLimit } from './lessons/tier1-order-limit';
@@ -15,6 +18,9 @@ import { tier1Joins } from './lessons/tier1-joins';
 
 /** All authored lessons. Order here doesn't matter — the curriculum outline owns ordering. */
 export const lessons: readonly Lesson[] = [
+  designAccessPatterns,
+  designEntities,
+  designRelationships,
   tier1Select,
   tier1Where,
   tier1OrderLimit,
