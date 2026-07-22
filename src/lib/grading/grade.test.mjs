@@ -195,6 +195,27 @@ test('a failing learner mutation grades as error, not incorrect', async () => {
   assert.equal(res.verdict, 'error');
 });
 
+test('an unclosed transaction in a learner answer does not wedge the shared instance', async () => {
+  // PGlite is one embedded session, so a dangling BEGIN survives the grade and would make every
+  // LATER grade fail on `DISCARD ALL cannot run inside a transaction block` — a session-wide
+  // outage from one learner's answer, not a single mis-grade. The DML lesson actively suggests
+  // wrapping risky writes in BEGIN, so this input is expected, not exotic.
+  const wedged = await grade({
+    referenceSql: "UPDATE users SET status = 'banned' WHERE status = 'inactive'",
+    learnerSql: "BEGIN; UPDATE users SET status = 'banned' WHERE status = 'inactive';",
+    probes: [{ label: 'banned users', sql: 'SELECT id, status FROM users WHERE id IN (4, 9) ORDER BY id' }],
+  });
+  assert.equal(wedged.verdict, 'correct');
+
+  // The real assertion: an unrelated, ordinary question still grades afterwards.
+  const after = await grade({
+    referenceSql: 'SELECT id FROM users ORDER BY id',
+    learnerSql: 'SELECT id FROM users ORDER BY id',
+    compare: { orderMatters: true },
+  });
+  assert.equal(after.verdict, 'correct', `instance wedged: ${after.message ?? ''}`);
+});
+
 test('a broken reference mutation is a content bug (unavailable)', async () => {
   const res = await grade({
     referenceSql: 'UPDATE orders SET nonexistent_col = 1 WHERE id = 104',

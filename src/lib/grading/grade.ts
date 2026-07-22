@@ -67,12 +67,22 @@ export function grade(input: GradeInput): Promise<GradeResult> {
 /**
  * Restore the grading instance to pristine post-setup state.
  *
- * DISCARD ALL clears session objects (temp tables survive DROP SCHEMA); it must be its own
+ * The leading ROLLBACK is what makes this survivable. PGlite is a single embedded session, not a
+ * connection pool, so a learner answer containing `BEGIN` with no COMMIT leaves the *shared*
+ * instance inside an open transaction that outlives the grade. DISCARD ALL cannot run inside a
+ * transaction block, so without this the next reset raises, that grade returns `unavailable`, and
+ * every later grade — including unrelated SELECT questions for other learners — fails the same way
+ * until the process restarts. ROLLBACK with no open transaction is a harmless no-op, so it costs
+ * nothing in the normal case and unwedges the session in the bad one. A DML lesson that teaches
+ * BEGIN as a safety habit makes this input likely, not exotic.
+ *
+ * DISCARD ALL then clears session objects (temp tables survive DROP SCHEMA); it must be its own
  * statement, as it can't run inside the reset batch's transaction. DML grading calls this twice
  * per grade — once before the reference mutation, once before the learner's — so each mutation
  * starts from the same base and neither sees the other's writes.
  */
 async function resetToPristine(db: Awaited<ReturnType<typeof getGradingDb>>, setupSql?: string) {
+  await db.exec('ROLLBACK');
   await db.exec('DISCARD ALL');
   await resetDatabase(db as unknown as PGlite);
   if (setupSql && setupSql.trim()) await db.exec(setupSql);

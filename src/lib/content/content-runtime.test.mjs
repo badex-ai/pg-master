@@ -210,15 +210,41 @@ test('DML references mutate, and every probe observes that mutation', async () =
     assert.ok(ref.ok, `${label}: reference mutation failed: ${ref.ok ? '' : ref.error.message}`);
 
     let anyMoved = false;
+    const after = [];
     for (const [i, p] of q.probes.entries()) {
       const res = await executeSql(db, p.sql);
       assert.ok(res.ok, `${label}: probe "${p.label}" failed after the mutation: ${res.ok ? '' : res.error.message}`);
       if (!compareResults(before[i], res.result, q.compare).equal) anyMoved = true;
+      after.push(res.result);
     }
     assert.ok(
       anyMoved,
       `${label}: no probe observed any change — the reference mutation is invisible to this probe vector, so every answer (including an empty one) would grade correct`,
     );
+
+    // "Some probe moved" is too weak on its own: a probe scoped to a single control row (WHERE
+    // id = 6) rather than the full complement (WHERE id NOT IN (4,9)) contributes no discriminating
+    // power, yet rides along on another probe's movement. So also require the vector to *catch a
+    // wrong answer*: apply the reference mutation to the whole table (no WHERE — the canonical
+    // over-broad error this design exists to detect) and assert some probe reports a difference.
+    const overBroad = q.referenceSql.replace(/\s+where\s+[\s\S]*$/i, '');
+    if (overBroad !== q.referenceSql) {
+      await reseed(setup);
+      const wrong = await executeSql(db, overBroad);
+      // Dropping the WHERE can legitimately violate a constraint; if so, this probe vector isn't
+      // what's under test and the check simply doesn't apply.
+      if (wrong.ok) {
+        let caught = false;
+        for (const [i, p] of q.probes.entries()) {
+          const res = await executeSql(db, p.sql);
+          if (!res.ok || !compareResults(after[i], res.result, q.compare).equal) caught = true;
+        }
+        assert.ok(
+          caught,
+          `${label}: dropping the WHERE from the reference mutation still grades correct — no probe observes the rows it should have left alone. Widen a probe to cover the complement (e.g. WHERE id NOT IN (…)).`,
+        );
+      }
+    }
   }
 });
 

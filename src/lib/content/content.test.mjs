@@ -172,6 +172,14 @@ test('DML write-query questions are well-formed across all lessons', async () =>
       const label = `${lesson.unit}/${q.id}`;
       assert.ok(q.probes.length > 0, `${label}: probes must not be empty`);
       assert.match(q.referenceSql, MUTATING, `${label}: has probes but referenceSql does not mutate`);
+      // orderMatters applies to each probe, but a probe observes *state* — the learner wrote a
+      // mutation with no ORDER BY of their own, so an order diff could only come from the probe's
+      // own SELECT, and the UI would tell them to fix an ORDER BY they never wrote. Pin the probe's
+      // order with an ORDER BY inside its sql instead.
+      assert.ok(
+        !q.compare?.orderMatters,
+        `${label}: compare.orderMatters is meaningless with probes — order the probe's own SELECT instead`,
+      );
       const seen = new Set();
       for (const p of q.probes) {
         assert.ok(p.label && p.label.trim(), `${label}: every probe needs a label`);
