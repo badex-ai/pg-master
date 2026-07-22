@@ -89,6 +89,13 @@ ORDER BY n DESC, status;`,
           equals: '3',
         },
         { sql: `SELECT count(*)::text FROM products WHERE price * 2 > 100`, equals: '8' },
+        // Pin the two products the prose names by name, not just the count-of-8: a future seed
+        // edit could keep 8 excluded while changing which two sit below the line, and the count
+        // pin alone would stay green with stale prose. id 9 = Mystery Gadget (19.99), id 7 = C book (45.00).
+        {
+          sql: `SELECT string_agg(id::text, ',' ORDER BY price * 2) FROM products WHERE NOT (price * 2 > 100)`,
+          equals: '9,7',
+        },
         {
           sql: `SELECT string_agg(id::text, ',' ORDER BY price DESC) FROM (SELECT id, price FROM products ORDER BY price DESC LIMIT 3) t`,
           equals: '2,1,3',
