@@ -136,8 +136,11 @@ export type Question =
   | (QuestionBase & { kind: 'concurrency'; steps: string[] })
   // 9. Why-is-the-answer-what-it-is — mechanism explanation, driven entirely by the reveal.
   | (QuestionBase & { kind: 'explain-mechanism' })
-  // 10. Compare-approaches — EXISTS vs IN vs JOIN, CTE vs subquery, with tradeoffs.
-  | (QuestionBase & { kind: 'compare-approaches'; options: string[] })
+  // 10. Compare-approaches — EXISTS vs IN vs JOIN, CTE vs subquery, with tradeoffs. `answerIndex`
+  //     is optional: give it when one option is objectively correct (the question is then graded
+  //     like multiple-choice), omit it when the honest answer is "it depends" (reveal-only, but the
+  //     options still render as context).
+  | (QuestionBase & { kind: 'compare-approaches'; options: string[]; answerIndex?: number })
   // 11. Multiple-choice — a plain single-select (used across many units, incl. trap questions).
   | (QuestionBase & { kind: 'multiple-choice'; choices: string[]; answerIndex: number });
 

@@ -118,6 +118,63 @@ function QuestionBody({
   const revealed = state.status === 'revealed';
 
   switch (question.kind) {
+    case 'compare-approaches': {
+      // Shares the choice UI: `options` are the choices. When `answerIndex` is set the question is
+      // graded exactly like multiple-choice; when it's absent (an "it depends" comparison) the
+      // options still render, but there's no correct pick — reveal is reached with a plain button.
+      const { options, answerIndex } = question;
+      const gradable = answerIndex !== undefined;
+      return (
+        <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-1.5">
+            {options.map((option, i) => {
+              const selected = state.selectedIndex === i;
+              const isCorrect = i === answerIndex;
+              const cls = revealed
+                ? gradable && isCorrect
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                  : selected
+                    ? gradable
+                      ? 'border-red-300 bg-red-50 text-red-800'
+                      : 'border-neutral-400 bg-neutral-100 text-neutral-800'
+                    : 'border-neutral-200 text-neutral-500'
+                : selected
+                  ? 'border-neutral-800 bg-neutral-800 text-white'
+                  : 'border-neutral-200 hover:bg-neutral-50';
+              return (
+                <li key={i}>
+                  <button
+                    type="button"
+                    disabled={revealed || !gradable}
+                    onClick={() => onChange({ ...state, selectedIndex: i })}
+                    className={`w-full rounded border px-3 py-1.5 text-left text-sm ${gradable ? 'cursor-pointer' : 'cursor-default'} ${cls}`}
+                  >
+                    {option}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {!revealed && (
+            <button
+              type="button"
+              disabled={gradable && state.selectedIndex === undefined}
+              onClick={() =>
+                onChange({
+                  status: 'revealed',
+                  selectedIndex: state.selectedIndex,
+                  correct: gradable ? state.selectedIndex === answerIndex : undefined,
+                })
+              }
+              className="self-start rounded bg-neutral-800 px-3 py-1 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {gradable ? 'Submit' : 'Show answer'}
+            </button>
+          )}
+        </div>
+      );
+    }
+
     case 'multiple-choice':
     case 'choose-index': {
       const { choices, answerIndex } = question;

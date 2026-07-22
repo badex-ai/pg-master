@@ -142,6 +142,8 @@ ORDER BY id;   -- the ORDER BY is you *asking* for an order; without it, none is
         'They may differ, because the subquery in B makes it evaluate in a different order.',
         'B is more correct because being explicit about "active" in a subquery is stricter.',
       ],
+      // Option A is objectively correct here, so the question is graded like multiple-choice.
+      answerIndex: 0,
       themes: ['set-based-thinking'],
       // Pin: both formulations yield the identical set {2,5,7,10}, proven by an empty symmetric
       // difference, and the count is 4. This is the positive "same description ⇒ same query" anchor.

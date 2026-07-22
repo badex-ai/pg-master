@@ -123,6 +123,26 @@ test('kind-specific required fields are present', async () => {
   assert.equal(mc.choices[mc.answerIndex], '9');
 });
 
+test('every answerIndex across all lessons is in range for its choices/options', async () => {
+  // A question that carries an answerIndex is graded by index equality in QuizFlow — an
+  // out-of-range index silently never matches, so no answer is ever "correct". `compare-approaches`
+  // is included here because its answerIndex is optional (present ⇒ gradable), and it renders
+  // `options` where MC/choose-index render `choices`. This guards every authored lesson, not just
+  // the sample, since the whole curriculum registry compiles into `outDir`.
+  const { lessons } = await mod('index');
+  for (const lesson of lessons) {
+    for (const q of lesson.questions) {
+      if (q.answerIndex === undefined) continue;
+      const opts = q.kind === 'compare-approaches' ? q.options : q.choices;
+      assert.ok(Array.isArray(opts) && opts.length >= 2, `${lesson.unit}/${q.id}: needs >= 2 options`);
+      assert.ok(
+        q.answerIndex >= 0 && q.answerIndex < opts.length,
+        `${lesson.unit}/${q.id}: answerIndex ${q.answerIndex} out of range for ${opts.length} options`,
+      );
+    }
+  }
+});
+
 test('every write-query reference is a non-mutating SELECT (grading invariant)', async () => {
   const l = await load();
   // The grader runs referenceSql FIRST as the oracle on pristine state, then the learner's SQL
