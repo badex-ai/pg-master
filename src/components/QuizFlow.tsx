@@ -303,6 +303,7 @@ function WriteQueryCard({
       referenceSql: question.referenceSql,
       learnerSql: sql,
       setupSql: question.setupSql ?? lessonSetupSql,
+      probes: question.probes,
       compare: question.compare,
     });
     setResult(res);
@@ -336,7 +337,7 @@ function WriteQueryCard({
         )}
       </div>
 
-      {result && <GradeReport result={result} />}
+      {result && <GradeReport result={result} isMutation={!!question.probes?.length} />}
 
       {revealed && (
         <pre className="overflow-x-auto rounded border border-neutral-200 bg-neutral-50 p-3 font-mono text-sm text-neutral-800">
@@ -348,11 +349,13 @@ function WriteQueryCard({
 }
 
 /** Render a grade verdict: correct banner, a rows/columns/order diff, or an error. */
-function GradeReport({ result }: { result: GradeResult }) {
+function GradeReport({ result, isMutation }: { result: GradeResult; isMutation?: boolean }) {
   if (result.verdict === 'correct') {
     return (
       <p className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800">
-        ✓ Correct — your result matches.
+        {isMutation
+          ? '✓ Correct — the database ended up in the right state.'
+          : '✓ Correct — your result matches.'}
       </p>
     );
   }
@@ -371,11 +374,16 @@ function GradeReport({ result }: { result: GradeResult }) {
     );
   }
 
-  // incorrect: show the diff.
+  // incorrect: show the diff. For a mutation, `probe` names which state check caught it, and the
+  // rows below are the observed state — not the learner's own statement output.
   const { diff } = result;
   return (
     <div className="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
-      <p className="font-medium text-amber-900">Not quite — your result differs.</p>
+      <p className="font-medium text-amber-900">
+        {result.probe
+          ? `Not quite — after your statement, ${result.probe} doesn't match.`
+          : 'Not quite — your result differs.'}
+      </p>
       {diff.reason === 'columns' && (
         <p className="font-mono text-xs text-amber-800">
           Expected columns: {diff.expected.join(', ')} · got: {diff.actual.join(', ')}

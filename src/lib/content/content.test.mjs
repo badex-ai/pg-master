@@ -143,15 +143,44 @@ test('every answerIndex across all lessons is in range for its choices/options',
   }
 });
 
+const MUTATING = /\b(insert|update|delete|drop|alter|create|truncate)\b/i;
+
 test('every write-query reference is a non-mutating SELECT (grading invariant)', async () => {
   const l = await load();
   // The grader runs referenceSql FIRST as the oracle on pristine state, then the learner's SQL
   // against the same state. A mutating reference would break that "same state" guarantee, and a
   // reference with no result columns can't be compared. Enforce both at authoring time.
-  const mutating = /\b(insert|update|delete|drop|alter|create|truncate)\b/i;
-  for (const q of l.questions.filter((q) => q.kind === 'write-query')) {
+  //
+  // Scoped to probe-less questions: a question WITH probes is a DML question, graded by comparing
+  // post-mutation state across two reseeds, where a mutating reference is the whole point. Every
+  // read-graded question keeps exactly the protection it had before probes existed.
+  for (const q of l.questions.filter((q) => q.kind === 'write-query' && !q.probes)) {
     assert.match(q.referenceSql, /select/i, `${q.id}: referenceSql must SELECT`);
-    assert.doesNotMatch(q.referenceSql, mutating, `${q.id}: referenceSql must not mutate`);
+    assert.doesNotMatch(q.referenceSql, MUTATING, `${q.id}: referenceSql must not mutate`);
+  }
+});
+
+test('DML write-query questions are well-formed across all lessons', async () => {
+  // The inverse invariant: a question carrying probes must actually mutate (otherwise probes are
+  // pointless indirection and the plain path should be used), and each probe must be a
+  // non-mutating SELECT with a label — a probe that mutates would corrupt the state that later
+  // probes in the same vector observe, silently mis-grading.
+  const { lessons } = await mod('index');
+  for (const lesson of lessons) {
+    for (const q of lesson.questions) {
+      if (q.kind !== 'write-query' || !q.probes) continue;
+      const label = `${lesson.unit}/${q.id}`;
+      assert.ok(q.probes.length > 0, `${label}: probes must not be empty`);
+      assert.match(q.referenceSql, MUTATING, `${label}: has probes but referenceSql does not mutate`);
+      const seen = new Set();
+      for (const p of q.probes) {
+        assert.ok(p.label && p.label.trim(), `${label}: every probe needs a label`);
+        assert.ok(!seen.has(p.label), `${label}: duplicate probe label "${p.label}"`);
+        seen.add(p.label);
+        assert.match(p.sql, /select/i, `${label}: probe "${p.label}" must SELECT`);
+        assert.doesNotMatch(p.sql, MUTATING, `${label}: probe "${p.label}" must not mutate`);
+      }
+    }
   }
 });
 

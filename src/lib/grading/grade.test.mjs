@@ -121,3 +121,86 @@ test('a learner SQL error grades as error, not incorrect', async () => {
   });
   assert.equal(res.verdict, 'error');
 });
+
+// --- DML grading (probes) ---
+// These drive the double-reseed path: reference mutation → probes (oracle), reseed, learner
+// mutation → probes, compare. The reseed between the two is the load-bearing part — without it the
+// learner would mutate state the reference had already changed.
+
+const CANCEL_PROBES = [
+  { label: 'the cancelled order', sql: "SELECT id, status FROM orders WHERE id = 104" },
+  { label: 'the other orders', sql: 'SELECT count(*)::text AS c FROM orders WHERE status = \'paid\'' },
+];
+
+test('an equivalent mutation grades correct even when spelled differently', async () => {
+  // Same effect, different SQL: the learner's statement text is irrelevant, only resulting state.
+  const res = await grade({
+    referenceSql: "UPDATE orders SET status = 'cancelled' WHERE id = 104",
+    learnerSql: "UPDATE orders SET status = 'cancelled' WHERE id = (SELECT min(id) FROM orders WHERE status = 'paid')",
+    probes: CANCEL_PROBES,
+  });
+  assert.equal(res.verdict, 'correct');
+});
+
+test('a mutation that does nothing grades incorrect, naming the probe', async () => {
+  // The vacuous-pass case the probe design exists to prevent.
+  const res = await grade({
+    referenceSql: "UPDATE orders SET status = 'cancelled' WHERE id = 104",
+    learnerSql: 'SELECT 1',
+    probes: CANCEL_PROBES,
+  });
+  assert.equal(res.verdict, 'incorrect');
+  assert.equal(res.probe, 'the cancelled order');
+});
+
+test('an over-broad mutation is caught by the second probe', async () => {
+  // Updates the target row correctly but also clobbers rows it should not touch. The first probe
+  // passes; only the "wrong rows unchanged" probe catches it — the reason probes are a vector.
+  const res = await grade({
+    referenceSql: "UPDATE orders SET status = 'cancelled' WHERE id = 104",
+    learnerSql: "UPDATE orders SET status = 'cancelled' WHERE status = 'paid'",
+    probes: CANCEL_PROBES,
+  });
+  assert.equal(res.verdict, 'incorrect');
+  assert.equal(res.probe, 'the other orders');
+});
+
+test('the learner mutation starts from pristine state, not the reference-mutated state', async () => {
+  // Proves the second reseed happens. The reference DELETEs order 110; if the learner ran against
+  // the reference's leftover state, this identical DELETE would affect 0 rows and still "match".
+  // It only grades correct because the learner got a fresh instance where 110 exists again.
+  const res = await grade({
+    referenceSql: 'DELETE FROM shipments WHERE order_id = 110',
+    learnerSql: 'DELETE FROM shipments WHERE order_id = 110',
+    probes: [{ label: 'remaining shipments', sql: 'SELECT id FROM shipments ORDER BY id' }],
+  });
+  assert.equal(res.verdict, 'correct');
+});
+
+test('an INSERT is graded by the row it leaves behind', async () => {
+  const res = await grade({
+    referenceSql: "INSERT INTO categories (name, parent_id, slug) VALUES ('Monitors', 5, 'monitors')",
+    learnerSql: "INSERT INTO categories (slug, name, parent_id) VALUES ('monitors', 'Monitors', 5)",
+    probes: [{ label: 'the new category', sql: "SELECT name, parent_id, slug FROM categories WHERE slug = 'monitors'" }],
+  });
+  assert.equal(res.verdict, 'correct');
+});
+
+test('a failing learner mutation grades as error, not incorrect', async () => {
+  const res = await grade({
+    referenceSql: "UPDATE orders SET status = 'cancelled' WHERE id = 104",
+    learnerSql: "UPDATE orders SET status = 'not_a_valid_status' WHERE id = 104",
+    probes: CANCEL_PROBES,
+  });
+  assert.equal(res.verdict, 'error');
+});
+
+test('a broken reference mutation is a content bug (unavailable)', async () => {
+  const res = await grade({
+    referenceSql: 'UPDATE orders SET nonexistent_col = 1 WHERE id = 104',
+    learnerSql: 'SELECT 1',
+    probes: CANCEL_PROBES,
+  });
+  assert.equal(res.verdict, 'unavailable');
+  assert.match(res.message, /Reference mutation failed/);
+});

@@ -170,7 +170,9 @@ test('authored seed facts still hold against the live seed', async () => {
 
 test('write-query references run, return unique-named columns, and are order-deterministic', async () => {
   for (const { lesson, q } of allQuestions()) {
-    if (q.kind !== 'write-query') continue;
+    // DML references (those with probes) are covered by the probe test below: they legitimately
+    // return no columns, so the assertions here would be wrong for them.
+    if (q.kind !== 'write-query' || q.probes) continue;
     const label = `${lesson.unit}/${q.id}`;
     await reseed(q.setupSql ?? lesson.setupSql);
     const res = await executeSql(db, q.referenceSql);
@@ -180,6 +182,43 @@ test('write-query references run, return unique-named columns, and are order-det
     if (q.compare?.orderMatters) {
       assert.match(q.referenceSql, /order\s+by/i, `${label}: orderMatters but reference has no ORDER BY (flaky oracle)`);
     }
+  }
+});
+
+test('DML references mutate, and every probe observes that mutation', async () => {
+  // The failure this exists to catch: a probe that returns the same thing before and after the
+  // reference mutation grades every answer "correct", including doing nothing at all. So for each
+  // probe we capture pristine state, run the reference mutation, and re-capture — and require that
+  // at least one probe in the vector actually moved. A probe that never moves is either pointing at
+  // the wrong table or the reference doesn't do what the author thought.
+  for (const { lesson, q } of allQuestions()) {
+    if (q.kind !== 'write-query' || !q.probes) continue;
+    const label = `${lesson.unit}/${q.id}`;
+    const setup = q.setupSql ?? lesson.setupSql;
+
+    await reseed(setup);
+    const before = [];
+    for (const p of q.probes) {
+      const res = await executeSql(db, p.sql);
+      assert.ok(res.ok, `${label}: probe "${p.label}" failed on pristine state: ${res.ok ? '' : res.error.message}`);
+      assert.ok(res.result.fields.length > 0, `${label}: probe "${p.label}" returned no columns`);
+      assert.equal(dupName(res.result.fields), null, `${label}: probe "${p.label}" has a duplicate column name`);
+      before.push(res.result);
+    }
+
+    const ref = await executeSql(db, q.referenceSql);
+    assert.ok(ref.ok, `${label}: reference mutation failed: ${ref.ok ? '' : ref.error.message}`);
+
+    let anyMoved = false;
+    for (const [i, p] of q.probes.entries()) {
+      const res = await executeSql(db, p.sql);
+      assert.ok(res.ok, `${label}: probe "${p.label}" failed after the mutation: ${res.ok ? '' : res.error.message}`);
+      if (!compareResults(before[i], res.result, q.compare).equal) anyMoved = true;
+    }
+    assert.ok(
+      anyMoved,
+      `${label}: no probe observed any change — the reference mutation is invisible to this probe vector, so every answer (including an empty one) would grade correct`,
+    );
   }
 });
 

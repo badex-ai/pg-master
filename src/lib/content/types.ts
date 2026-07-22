@@ -69,6 +69,28 @@ export type SeedFact = {
   equals: string;
 };
 
+/**
+ * One post-mutation state observation, for grading a DML `write-query`.
+ *
+ * A mutation has no result set worth comparing — a bare INSERT/UPDATE/DELETE returns no rows, and
+ * even with RETURNING the interesting question is what the *database* now looks like. So a DML
+ * question is graded indirectly: run the reference mutation on a pristine instance, run these
+ * probes to capture the state it produced, reseed, run the learner's mutation, run the same probes
+ * again, and compare probe-for-probe.
+ *
+ * Probes are a vector rather than one query because DML correctness is usually a conjunction:
+ * "the right rows changed" AND "the wrong rows did not". Folding those into a single compound
+ * SELECT would still grade correctly but would report a bare "incorrect" — with separate probes,
+ * the failing one names which property broke. Same reasoning as `SeedFact`, whose shape this
+ * mirrors: many small named checks beat one opaque one.
+ */
+export type StateProbe = {
+  /** Short human-readable name for this observation, shown when this probe is the one that fails. */
+  label: string;
+  /** SELECT observing the post-mutation state. Must not itself mutate. */
+  sql: string;
+};
+
 /** Fields common to every question, regardless of kind. */
 export type QuestionBase = {
   /** Stable id, unique within a lesson (e.g. 'q1'). */
@@ -117,13 +139,27 @@ export type Question =
   // 3. Spot-the-bug — runs but returns wrong results; learner identifies the defect.
   | (QuestionBase & { kind: 'spot-the-bug'; sql: string })
   // 4. Write-the-query — graded by running against the DB and comparing result sets.
+  //    With `probes`, the same kind grades a *mutation* (DML): see StateProbe.
   | (QuestionBase & {
       kind: 'write-query';
-      /** The canonical correct query; its result set is the grading oracle. */
+      /**
+       * The canonical correct query. Without `probes` its result set is the grading oracle, and
+       * it must be a non-mutating SELECT. With `probes` it is the reference *mutation*, and the
+       * oracle becomes the state that mutation leaves behind.
+       */
       referenceSql: string;
+      /**
+       * Post-state observations that turn a mutation into something gradable. Present ⇒ this is a
+       * DML question and `referenceSql` is expected to mutate; absent ⇒ today's SELECT-vs-SELECT
+       * grading, unchanged.
+       */
+      probes?: StateProbe[];
       /** Extra setup on the reseeded grading instance for this question (overrides the lesson's). */
       setupSql?: string;
-      /** Result-set comparison mode; omitted = unordered set, names must match. */
+      /**
+       * Result-set comparison mode; omitted = unordered set, names must match. With `probes` it
+       * applies to *each probe independently* — every probe is its own result-set comparison.
+       */
       compare?: CompareMode;
     })
   // 5. Rewrite/optimize — make it correct/faster and explain the change.

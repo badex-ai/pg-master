@@ -16,7 +16,8 @@ import { getGradingDb } from './instance';
  */
 export type GradeResult =
   | { verdict: 'correct' }
-  | { verdict: 'incorrect'; diff: Exclude<CompareResult, { equal: true }> }
+  /** `probe` is set only for DML grading: it names the state observation that caught the divergence. */
+  | { verdict: 'incorrect'; diff: Exclude<CompareResult, { equal: true }>; probe?: string }
   | { verdict: 'error'; error: PgError; sql: string }
   | { verdict: 'ambiguous-columns'; duplicate: string }
   | { verdict: 'unavailable'; message: string };
@@ -40,6 +41,11 @@ export type GradeInput = {
   learnerSql: string;
   /** Extra setup run on the reseeded instance before grading; question overrides lesson. */
   setupSql?: string;
+  /**
+   * Post-mutation state observations. Present ⇒ DML grading: `referenceSql` and `learnerSql` are
+   * mutations, and it's the state each leaves behind (as seen by these probes) that is compared.
+   */
+  probes?: { label: string; sql: string }[];
   compare?: CompareOptions;
 };
 
@@ -58,18 +64,30 @@ export function grade(input: GradeInput): Promise<GradeResult> {
   return result;
 }
 
+/**
+ * Restore the grading instance to pristine post-setup state.
+ *
+ * DISCARD ALL clears session objects (temp tables survive DROP SCHEMA); it must be its own
+ * statement, as it can't run inside the reset batch's transaction. DML grading calls this twice
+ * per grade — once before the reference mutation, once before the learner's — so each mutation
+ * starts from the same base and neither sees the other's writes.
+ */
+async function resetToPristine(db: Awaited<ReturnType<typeof getGradingDb>>, setupSql?: string) {
+  await db.exec('DISCARD ALL');
+  await resetDatabase(db as unknown as PGlite);
+  if (setupSql && setupSql.trim()) await db.exec(setupSql);
+}
+
 async function gradeOnce(input: GradeInput): Promise<GradeResult> {
   const db = await getGradingDb();
 
-  // Pristine state: clear session objects (temp tables survive DROP SCHEMA), then reseed.
-  // DISCARD ALL must be its own statement — it can't run inside the reset batch's transaction.
   try {
-    await db.exec('DISCARD ALL');
-    await resetDatabase(db as unknown as PGlite);
-    if (input.setupSql && input.setupSql.trim()) await db.exec(input.setupSql);
+    await resetToPristine(db, input.setupSql);
   } catch (e) {
     return { verdict: 'unavailable', message: `Grading setup failed: ${String(e)}` };
   }
+
+  if (input.probes?.length) return gradeMutation(db, input, input.probes);
 
   // Reference runs FIRST on pristine post-setup state — it's the oracle. Running the learner
   // first would let a mutating answer corrupt the state the reference then sees (a false pass).
@@ -106,4 +124,73 @@ async function gradeOnce(input: GradeInput): Promise<GradeResult> {
   const cmp = compareResults(ref.result, learner.result, input.compare);
   if (cmp.equal) return { verdict: 'correct' };
   return { verdict: 'incorrect', diff: cmp };
+}
+
+/**
+ * Grade a mutation by comparing the *state* it leaves behind, not its result set.
+ *
+ * A bare INSERT/UPDATE/DELETE returns no rows, so there is nothing to compare directly. Instead:
+ * run the reference mutation on pristine state and capture what the probes see (the oracle), reseed
+ * to that same pristine state, run the learner's mutation, re-run the probes, and compare
+ * probe-for-probe. The second reseed is what makes this honest — without it the learner would be
+ * mutating state the reference had already changed.
+ *
+ * The learner's own statement result is deliberately ignored: whether they used RETURNING, or ran
+ * three statements instead of one, is irrelevant if the resulting state matches.
+ */
+async function gradeMutation(
+  db: Awaited<ReturnType<typeof getGradingDb>>,
+  input: GradeInput,
+  probes: { label: string; sql: string }[],
+): Promise<GradeResult> {
+  // Oracle: the reference mutation's effect, as seen by each probe.
+  const ref = await executeSql(db, input.referenceSql);
+  if (!ref.ok) {
+    return { verdict: 'unavailable', message: `Reference mutation failed: ${ref.error.message}` };
+  }
+  const expected: { label: string; result: typeof ref.result }[] = [];
+  for (const probe of probes) {
+    const res = await executeSql(db, probe.sql);
+    if (!res.ok) {
+      return {
+        verdict: 'unavailable',
+        message: `Probe "${probe.label}" failed after the reference mutation: ${res.error.message}`,
+      };
+    }
+    if (res.result.fields.length === 0) {
+      return { verdict: 'unavailable', message: `Probe "${probe.label}" returned no columns (must be a SELECT).` };
+    }
+    const dup = firstDuplicateColumn(res.result.fields);
+    if (dup !== null) {
+      return {
+        verdict: 'unavailable',
+        message: `Probe "${probe.label}" has two columns named "${dup}"; alias them with AS.`,
+      };
+    }
+    expected.push({ label: probe.label, result: res.result });
+  }
+
+  // Back to the same starting point, so the learner's mutation is judged from pristine state.
+  try {
+    await resetToPristine(db, input.setupSql);
+  } catch (e) {
+    return { verdict: 'unavailable', message: `Grading reset failed: ${String(e)}` };
+  }
+
+  const learner = await executeSql(db, input.learnerSql);
+  if (!learner.ok) {
+    return { verdict: 'error', error: learner.error, sql: learner.sql };
+  }
+
+  for (const [i, probe] of probes.entries()) {
+    const res = await executeSql(db, probe.sql);
+    // A probe that ran against the reference but fails now means the learner's statement left the
+    // schema unusable (dropped a column, wrong type) — their fault, reported as their error.
+    if (!res.ok) {
+      return { verdict: 'error', error: res.error, sql: probe.sql };
+    }
+    const cmp = compareResults(expected[i].result, res.result, input.compare);
+    if (!cmp.equal) return { verdict: 'incorrect', diff: cmp, probe: probe.label };
+  }
+  return { verdict: 'correct' };
 }
