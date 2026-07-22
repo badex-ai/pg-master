@@ -200,10 +200,12 @@ test('DML references mutate, and every probe observes that mutation', async () =
     const before = [];
     for (const p of q.probes) {
       const res = await executeSql(db, p.sql);
-      assert.ok(res.ok, `${label}: probe "${p.label}" failed on pristine state: ${res.ok ? '' : res.error.message}`);
-      assert.ok(res.result.fields.length > 0, `${label}: probe "${p.label}" returned no columns`);
-      assert.equal(dupName(res.result.fields), null, `${label}: probe "${p.label}" has a duplicate column name`);
-      before.push(res.result);
+      // A DDL probe legitimately cannot run before its mutation — `SELECT ... FROM tags` is an
+      // error until CREATE TABLE tags runs. That is the strongest possible evidence the mutation
+      // did something, not a fault, so record the failure as the "before" state and let the
+      // post-mutation assertions below do the real checking. The grader never runs a probe before
+      // the mutation either (gradeMutation runs reference-then-probes), so this matches it.
+      before.push(res.ok ? res.result : null);
     }
 
     const ref = await executeSql(db, q.referenceSql);
@@ -213,8 +215,13 @@ test('DML references mutate, and every probe observes that mutation', async () =
     const after = [];
     for (const [i, p] of q.probes.entries()) {
       const res = await executeSql(db, p.sql);
+      // After the mutation a probe MUST work — this is the state the grader compares against.
       assert.ok(res.ok, `${label}: probe "${p.label}" failed after the mutation: ${res.ok ? '' : res.error.message}`);
-      if (!compareResults(before[i], res.result, q.compare).equal) anyMoved = true;
+      assert.ok(res.result.fields.length > 0, `${label}: probe "${p.label}" returned no columns`);
+      assert.equal(dupName(res.result.fields), null, `${label}: probe "${p.label}" has a duplicate column name`);
+      // A probe that could not run before and can now has observed the mutation as sharply as
+      // possible (the object it queries did not exist yet).
+      if (before[i] === null || !compareResults(before[i], res.result, q.compare).equal) anyMoved = true;
       after.push(res.result);
     }
     assert.ok(
