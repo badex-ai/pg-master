@@ -10,6 +10,7 @@ import type { Lesson } from './types';
 import { designAccessPatterns } from './lessons/design-access-patterns';
 import { designEntities } from './lessons/design-entities';
 import { designRelationships } from './lessons/design-relationships';
+import { tier0RelationalModel } from './lessons/tier0-relational-model';
 import { tier0EvalOrder } from './lessons/tier0-eval-order';
 import { tier0Null } from './lessons/tier0-null';
 import { tier1Select } from './lessons/tier1-select';
@@ -23,6 +24,7 @@ export const lessons: readonly Lesson[] = [
   designAccessPatterns,
   designEntities,
   designRelationships,
+  tier0RelationalModel,
   tier0EvalOrder,
   tier0Null,
   tier1Select,
