@@ -20,6 +20,7 @@ import { tier1Where } from './lessons/tier1-where';
 import { tier1OrderLimit } from './lessons/tier1-order-limit';
 import { tier1Aggregation } from './lessons/tier1-aggregation';
 import { tier1Joins } from './lessons/tier1-joins';
+import { tier1SetOps } from './lessons/tier1-set-ops';
 
 /** All authored lessons. Order here doesn't matter — the curriculum outline owns ordering. */
 export const lessons: readonly Lesson[] = [
@@ -36,6 +37,7 @@ export const lessons: readonly Lesson[] = [
   tier1OrderLimit,
   tier1Aggregation,
   tier1Joins,
+  tier1SetOps,
 ];
 
 /** unit id → Lesson. Throws at module load on a duplicate unit (an authoring mistake). */
