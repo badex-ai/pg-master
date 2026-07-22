@@ -14,6 +14,7 @@ import { tier0RelationalModel } from './lessons/tier0-relational-model';
 import { tier0EvalOrder } from './lessons/tier0-eval-order';
 import { tier0Declarative } from './lessons/tier0-declarative';
 import { tier0Null } from './lessons/tier0-null';
+import { tier0DataTypes } from './lessons/tier0-data-types';
 import { tier1Select } from './lessons/tier1-select';
 import { tier1Where } from './lessons/tier1-where';
 import { tier1OrderLimit } from './lessons/tier1-order-limit';
@@ -29,6 +30,7 @@ export const lessons: readonly Lesson[] = [
   tier0EvalOrder,
   tier0Declarative,
   tier0Null,
+  tier0DataTypes,
   tier1Select,
   tier1Where,
   tier1OrderLimit,
