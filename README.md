@@ -34,7 +34,8 @@ The curriculum is authored as four cross-linked spec files that drive every less
 
 ## Status
 
-Early build. See [`TASKS.md`](./TASKS.md) for the backlog and progress.
+Early build. Tier 0 (the mental model), Tier 1 (core queries) and the first three
+database-design lessons are written; later tiers are in progress.
 
 ## Development
 

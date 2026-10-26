@@ -2,8 +2,8 @@
  * Tier 0 · Unit 0.3 — SQL is declarative, not imperative.
  *
  * The conceptual capstone of the mental-model tier. You state WHAT set you want, not HOW to
- * compute it; the engine is free to choose any execution path that yields that set. Taught the way
- * Fable designed it: lead with a NEGATIVE, honestly-pinnable claim (no ORDER BY ⇒ no guaranteed
+ * compute it; the engine is free to choose any execution path that yields that set. Taught this
+ * way: lead with a NEGATIVE, honestly-pinnable claim (no ORDER BY ⇒ no guaranteed
  * row order — asking "what order" is itself the imperative mistake), then a POSITIVE demonstration
  * (the same set reached by two structurally unrelated queries, identical not by luck but by
  * contract). Deliberately does NOT show EXPLAIN — that would re-import imperative thinking and
